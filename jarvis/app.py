@@ -9,7 +9,7 @@ from .clima import consultar_clima
 from .cotacao import consultar_cotacao
 from .horario import agora_recife
 from .musica import Musica
-from .reconhecimento import ErroMicrofone, Ouvinte, eh_ativacao
+from .reconhecimento import ErroMicrofone, ErroReconhecedor, Ouvinte, eh_ativacao
 from .saudacao import montar_saudacao
 from .voz import ErroVoz, Voz
 
@@ -95,7 +95,7 @@ def main(argv=None) -> int:
                         ouvinte = Ouvinte(args.modelo, args.microfone, args.limiar)
                         print("Reconhecimento local pronto. Diga: bom dia Jarvis.", flush=True)
                     ouvinte.aguardar_ativacao()
-                except ErroMicrofone as erro:
+                except (ErroMicrofone, ErroReconhecedor) as erro:
                     print(f"Problema de reconhecimento: {erro}")
                     print("Tentando novamente em 3 segundos. Ctrl+C encerra; --texto dispensa o microfone.", flush=True)
                     time.sleep(3)

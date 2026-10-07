@@ -11,6 +11,7 @@ ARQUIVO = RAIZ / "config.local.json"
 class Configuracoes:
     modelo: str = "tiny"
     microfone: int | None = None
+    microfone_identidade: list[str] | None = None
     voz: str | None = None
     velocidade: int = 150
     volume: float = 0.12
@@ -27,6 +28,9 @@ class Configuracoes:
                 and 3 <= self.timeout_pergunta <= 60 and 3 <= self.captura_maxima <= 30
                 and 0.001 <= self.limiar <= 0.5):
             raise ValueError("Preferências fora dos limites.")
+        if self.microfone_identidade is not None and (not isinstance(self.microfone_identidade, list)
+                or len(self.microfone_identidade) != 2 or not all(isinstance(v, str) for v in self.microfone_identidade)):
+            raise ValueError("Identidade do microfone inválida.")
         return self
 
 

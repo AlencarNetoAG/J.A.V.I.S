@@ -1,6 +1,7 @@
 """Um único worker serializa reconhecimento, consultas e áudio; Qt só recebe sinais."""
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+import logging
 import queue
 import sys
 import threading
@@ -15,7 +16,7 @@ from .comandos import interpretar
 from .cotacao import consultar_cotacao
 from .horario import agora_recife
 from .musica import Musica
-from .reconhecimento import Ouvinte, ErroMicrofone
+from .reconhecimento import Ouvinte, ErroMicrofone, ErroReconhecedor, listar_microfones
 from .saudacao import montar_saudacao
 from .voz import Voz, ErroVoz
 
@@ -56,6 +57,8 @@ class Runtime(QObject):
     cartoes = Signal(dict)
     dispositivos = Signal(dict)
     microfone = Signal(bool)
+    reconhecido = Signal(str)
+    diagnostico = Signal(dict)
 
     def __init__(self, config):
         super().__init__()
@@ -112,6 +115,14 @@ class Runtime(QObject):
         self.parar()
         self.config = config
 
+    def testar_microfone(self):
+        with self.lock:
+            if self.trabalhando or not self.fila.empty():
+                return False
+            self.fila.put_nowait(("teste_microfone", ""))
+            self.cancelar.set()
+            return True
+
     def listar_dispositivos(self):
         with self.lock:
             if self.trabalhando or not self.fila.empty():
@@ -159,16 +170,50 @@ class Runtime(QObject):
                     if origem == "dispositivos":
                         self._dispositivos()
                         continue
-                    if origem == "microfone":
-                        nova = (config.modelo, config.microfone, config.limiar)
+                    if origem in ("microfone", "teste_microfone"):
+                        nova = (config.modelo, config.microfone, config.limiar, config.microfone_identidade)
                         if assinatura != nova:
-                            self.emitir(self.estado, "Carregando reconhecimento local…")
+                            self.emitir(self.estado, "Preparando entrada de áudio…")
+                            ouvinte = None
                             ouvinte = Ouvinte(*nova)
                             assinatura = nova
                         verificar(self.cancelar)
-                        self.emitir(self.estado, 'Aguardando “Jarvis”')
-                        texto = ouvinte.capturar_texto(self.cancelar, maximo=config.captura_maxima,
-                                                      nivel=lambda valor: self.emitir(self.nivel, valor))
+                        if origem == "teste_microfone":
+                            ouvinte.ruido = None
+                            with self.lock:
+                                self.trabalhando = True
+                            self.emitir(self.ocupado, True)
+                            self.emitir(self.diagnostico, {"captura": "Aguardando áudio", "reconhecimento": "Ainda não executado"})
+                        def publicar_estado(valor):
+                            self.emitir(self.estado, valor)
+                            if origem == "teste_microfone" and ouvinte.ultimo.get("captura"):
+                                self.emitir(self.diagnostico, {"captura": "Sim · áudio recebido", "reconhecimento": "Em processamento local"})
+                        try:
+                            texto = ouvinte.capturar_texto(self.cancelar, maximo=config.captura_maxima,
+                                **({"timeout": 8.0} if origem == "teste_microfone" else {}),
+                                nivel=lambda valor: self.emitir(self.nivel, valor),
+                                estado=publicar_estado)
+                            self.emitir(self.reconhecido, texto)
+                            if origem == "teste_microfone":
+                                self.emitir(self.diagnostico, {
+                                    "captura": "Sim · áudio recebido" if ouvinte.ultimo.get("captura") else "Não · nenhum áudio recebido",
+                                    "reconhecimento": f"Sim · {texto}" if texto else "Não · nenhuma fala reconhecida; confira silêncio, ganho e limiar",
+                                    "rms": ouvinte.ultimo.get("pico_rms", 0.),
+                                })
+                                continue
+                        except (ErroMicrofone, ErroReconhecedor, Cancelado) as erro:
+                            if origem == "teste_microfone":
+                                self.emitir(self.diagnostico, {
+                                    "captura": "Sim · áudio recebido" if ouvinte.ultimo.get("captura") else "Não · captura não confirmada",
+                                    "reconhecimento": "Cancelado" if isinstance(erro, Cancelado) else str(erro),
+                                })
+                            raise
+                        finally:
+                            if origem == "teste_microfone":
+                                with self.lock:
+                                    self.trabalhando = False
+                                self.emitir(self.ocupado, False)
+                                self.emitir(self.estado, "Preparando escuta" if self.ativo else "Desativado")
                         tipo, pergunta = interpretar(texto)
                         if tipo == "ignorar":
                             continue
@@ -188,14 +233,16 @@ class Runtime(QObject):
                         if tipo == "aguardar":
                             self._falar("Sim, senhor?", config)
                             verificar(self.cancelar)
-                            self.emitir(self.estado, "Ouvindo pergunta")
-                            if ouvinte is None:
+                            self.emitir(self.estado, "Preparando captura da pergunta")
+                            if origem != "microfone":
                                 # Ativação apenas por texto: a próxima pergunta vem pelo campo.
                                 self.emitir(self.mensagem, "Jarvis", "Sim, senhor? Digite sua pergunta.")
                                 continue
                             pergunta = ouvinte.capturar_texto(self.cancelar, timeout=config.timeout_pergunta,
                                                              maximo=config.captura_maxima,
-                                                             nivel=lambda valor: self.emitir(self.nivel, valor))
+                                                             nivel=lambda valor: self.emitir(self.nivel, valor),
+                                                             estado=lambda valor: self.emitir(self.estado, valor))
+                            self.emitir(self.reconhecido, pergunta)
                             if not pergunta:
                                 self.emitir(self.mensagem, "Aviso", "Nenhuma pergunta capturada no prazo.")
                                 continue
@@ -236,20 +283,26 @@ class Runtime(QObject):
                         self.ultima_voz = time.monotonic()
                         self.emitir(self.ocupado, False)
                         self.emitir(self.nivel, 0.0)
-                        self.emitir(self.estado, 'Aguardando “Jarvis”' if self.ativo else "Desativado")
+                        self.emitir(self.estado, "Preparando escuta" if self.ativo else "Desativado")
                 except Cancelado:
-                    self.emitir(self.estado, "Desativado" if not self.ativo else 'Aguardando “Jarvis”')
-                except (ErroOpenAI, ErroMicrofone, ErroVoz) as erro:
+                    self.emitir(self.estado, "Desativado" if not self.ativo else "Preparando escuta")
+                except (ErroOpenAI, ErroMicrofone, ErroReconhecedor, ErroVoz) as erro:
                     self.emitir(self.mensagem, "Aviso", str(erro))
+                    if origem == "teste_microfone" and ouvinte is None:
+                        self.emitir(self.diagnostico, {"captura": "Não · captura não iniciada", "reconhecimento": str(erro)})
                     self.emitir(self.estado, "Erro")
-                    if origem == "microfone":
+                    if isinstance(erro, ErroMicrofone):
                         self.ativo = False
                         self.emitir(self.microfone, False)
-                except Exception:
+                    elif isinstance(erro, ErroReconhecedor):
+                        self.shutdown.wait(.5)
+                except Exception as erro:
+                    logging.getLogger(__name__).error("Falha inesperada no worker: %s", type(erro).__name__)
                     self.emitir(self.mensagem, "Aviso", "Operação não concluída. Confira instalação, internet e dispositivos.")
                     self.emitir(self.estado, "Erro")
-                    self.ativo = False
-                    self.emitir(self.microfone, False)
+                    if origem in ("microfone", "teste_microfone"):
+                        self.ativo = False
+                        self.emitir(self.microfone, False)
         finally:
             if self.voz:
                 self.voz.fechar()
@@ -276,12 +329,15 @@ class Runtime(QObject):
             self.emitir(self.mensagem, "Aviso", "Voz local indisponível. A resposta está no histórico; confira configurações de fala.")
 
     def _dispositivos(self):
-        dados = {"microfones": [], "vozes": []}
+        dados = {"microfones": [], "vozes": [], "identidades": {}}
         try:
             import sounddevice as sd
-            dados["microfones"] = [(i, d["name"]) for i, d in enumerate(sd.query_devices()) if d["max_input_channels"] > 0]
-        except Exception:
-            self.emitir(self.mensagem, "Aviso", "Não foi possível listar microfones.")
+            entradas = listar_microfones(sd)
+            dados["microfones"] = [(i, f"{nome} · {host}") for i, nome, host in entradas]
+            dados["identidades"] = {i: [nome, host] for i, nome, host in entradas}
+        except Exception as erro:
+            logging.getLogger(__name__).warning("Enumeração de microfones falhou: %s", type(erro).__name__)
+            self.emitir(self.mensagem, "Aviso", "Não foi possível listar microfones. Confira instalação de áudio e dispositivos conectados.")
         try:
             import pyttsx3
             engine = self.voz.engine if self.voz else pyttsx3.init("sapi5" if sys.platform == "win32" else None)

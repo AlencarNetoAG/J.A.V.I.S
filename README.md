@@ -35,7 +35,7 @@ Depois de instalar, dê dois cliques em **`iniciar_jarvis.bat`**, ou execute na 
 .\.venv\Scripts\python.exe main.py
 ```
 
-O microfone começa **desativado**. Digite `bom dia Jarvis` e clique em **Enviar** para testar a saudação. A janela não carrega o modelo de reconhecimento até você clicar **Ativar microfone**. Os cartões mostram “Ainda não consultado”, “Consultando” ou “Indisponível”, sem números fictícios. O histórico mostra pergunta e resposta; o medidor usa a energia captada de verdade no microfone, e fica zerado durante a reprodução local. Ele não mede amplitude dos alto-falantes.
+O microfone começa **desativado**. Digite `bom dia Jarvis` e clique em **Enviar** para testar a saudação. O modelo só é carregado após uma frase com energia suficiente ser capturada, inclusive no teste do microfone. Os cartões mostram “Ainda não consultado”, “Consultando” ou “Indisponível”, sem números fictícios. O histórico mostra pergunta e resposta; o medidor usa a energia captada de verdade no microfone, e fica zerado durante a reprodução local. Ele não mede amplitude dos alto-falantes.
 
 **Configurações** permite listar/selecionar microfone e voz instalados, velocidade, música, volume, modelo Whisper, limiar, duração máxima, espera pela pergunta e reduzir movimento. A enumeração dos dispositivos roda fora da thread da interface. As preferências ficam em `config.local.json` (ignorado no Git), sem chave da API. Ao aplicar configurações, o microfone fica desligado; ative-o de novo quando desejar.
 
@@ -115,7 +115,7 @@ Para executar sem música, use `--sem-musica`. **`--sem-voz` desativa somente a 
 
 Usamos **Whisper multilíngue**, executado no próprio PC pelo [faster-whisper](https://github.com/SYSTRAN/faster-whisper), sem enviar áudio a um serviço externo. O modelo padrão é `tiny`, com pesos de aproximadamente 75 MB, disponível em [Systran/faster-whisper-tiny](https://huggingface.co/Systran/faster-whisper-tiny). Reserve algumas centenas de MB para modelo e dependências e, de preferência, ao menos 4 GB de RAM no PC. Não precisa de placa de vídeo: usamos CPU e cálculo `int8`.
 
-O primeiro uso com microfone baixa o modelo automaticamente para `modelos/`. Aguarde o estado “Aguardando Jarvis”; a velocidade depende da internet. Depois os arquivos são reutilizados. Se quiser preparar o modelo antes, sem abrir o microfone, execute **na pasta do projeto**:
+A primeira transcrição baixa o modelo automaticamente para `modelos/`. Durante o download, a captura permanece fechada; a velocidade depende da internet. Depois os arquivos são reutilizados. Se quiser preparar o modelo antes, sem abrir o microfone, execute **na pasta do projeto**:
 
 ```powershell
 .\.venv\Scripts\python.exe -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8', cpu_threads=2, download_root='modelos'); print('Modelo pronto.')"
@@ -131,7 +131,7 @@ Fale com clareza, em ambiente silencioso, e faça uma pausa de cerca de um segun
 .\.venv\Scripts\python.exe main.py
 ```
 
-Na janela, clique **Ativar microfone**. Aguarde o carregamento local e o estado **Aguardando “Jarvis”**. Você pode dizer “Jarvis, explique uma função”, apenas “Jarvis” para ouvir “Sim, senhor?”, ou “bom dia Jarvis” para a saudação prioritária.
+Na janela, clique **Ativar microfone**. Fique em silêncio por um segundo durante a calibração e aguarde o estado **Ouvindo**. A primeira transcrição pode demorar para baixar/carregar o modelo. Você pode dizer “Jarvis, explique uma função”, apenas “Jarvis” para ouvir “Sim, senhor?”, ou “bom dia Jarvis” para a saudação prioritária.
 
 Diga **“bom dia Jarvis”**. Espere a resposta terminar e pelo menos três segundos antes de uma nova ativação. Maiúsculas, espaços, acentos e pontuação são normalizados. Só frases completas transcritas acionam a consulta. A captura usa blocos curtos, detecta volume e encerra a frase após um segundo de silêncio ou a duração máxima configurada (padrão: 12 segundos de áudio). Um filtro local de atividade de voz também ajuda a descartar silêncio.
 
@@ -198,13 +198,13 @@ O terminal exibe cidade/estado/país confirmados, coordenadas, temperatura, cond
 
 ## Problemas comuns
 
-**Microfone/permissão:** no Windows, habilite acesso ao microfone para aplicativos da área de trabalho em Configurações → Privacidade e segurança → Microfone. Confira o dispositivo padrão e se outro programa o está usando exclusivamente. Se houver erro, o Jarvis avisa e tenta novamente em três segundos; Ctrl+C continua disponível.
+**Microfone/permissão:** no Windows, habilite acesso ao microfone para aplicativos da área de trabalho em Configurações → Privacidade e segurança → Microfone. Confira o dispositivo padrão e se outro programa o está usando exclusivamente. Se o dispositivo falhar ou for desconectado, a escuta é desativada com aviso; reconecte, atualize a lista, selecione e clique em Ativar microfone novamente. Falhas das consultas não desativam a escuta. O botão Parar continua disponível.
 
 **Modelo não carrega:** confira a internet no primeiro uso e a pasta `modelos/`. Se usar `--modelo` com um caminho, ele deve conter um modelo convertido para faster-whisper, com `model.bin`, `config.json` e demais recursos. Não use um modelo Vosk nem um arquivo ZIP.
 
 **Erro de DLL na instalação/execução:** se aparecer `DLL load failed`, confira se Python e Windows são de 64 bits e instale o [Microsoft Visual C++ Redistributable x64](https://aka.ms/vs/17/release/vc_redist.x64.exe), pelo site da Microsoft. Reinicie o terminal e tente novamente.
 
-**Não reconhece Jarvis:** use um ambiente silencioso e uma pausa após a frase. Confira primeiro `--texto`, que testa câmbio e fala independentemente do reconhecimento. Para voz baixa, tente `--limiar 0.005`; se o ruído disparar capturas, tente `--limiar 0.03`. O padrão é `0.01` (energia relativa, de 0 a 1). Também pode tentar `--modelo base`. Confira se o microfone suporta entrada mono a 16 kHz. Normalizar o texto não corrige palavras transcritas incorretamente.
+**Não reconhece Jarvis:** use um ambiente silencioso e uma pausa após a frase. Confira primeiro `--texto`, que testa câmbio e fala independentemente do reconhecimento. Para voz baixa, tente `--limiar 0.005`; se o ruído disparar capturas, tente `--limiar 0.03`. O piso padrão é `0.01` (RMS relativo, de 0 a 1); a detecção usa o maior entre esse piso e 2,5 vezes o ruído calibrado. Também pode tentar `--modelo base`. A entrada usa uma taxa e um número de canais verificados no dispositivo; o PCM float32 é convertido em memória para mono a 16 kHz antes do Whisper. Normalizar o texto não corrige palavras transcritas incorretamente.
 
 **Sem voz/som:** instale uma voz portuguesa compatível com SAPI5, confira a lista de vozes, o volume e a saída padrão. Falhas de síntese são informadas no terminal; o programa continua e tenta iniciar a voz novamente na próxima ativação.
 
@@ -261,3 +261,26 @@ No seu PC, coloque o MP3 e execute `--texto` para conferir a fala do Windows, a 
 A janela foi criada, renderizada e inspecionada em Linux com Qt **offscreen**, incluindo controles reais, redimensionamento, seleção de preferências, animação reduzida, limpeza, prevenção de tarefas duplicadas e cancelamento. Os 45 testes automatizados passaram. O transporte da Responses API foi testado com o SDK oficial e **HTTP simulado**: ferramentas, contexto limitado, chave ausente, autenticação, limite, conexão e cancelamento. O README atual do repositório oficial do SDK foi consultado e recomenda Responses; páginas completas da documentação OpenAI foram bloqueadas pela rede deste ambiente.
 
 **Não havia chave configurada**, portanto não foi realizada chamada real à OpenAI. Não há arquivo AC/DC fornecido, logo não foi testada essa faixa. O modelo Whisper ainda exige download no primeiro uso; seu carregamento/transcrição real não foi validado aqui por causa do bloqueio de rede documentado acima. Fala SAPI5 cancelável em thread, seleção de dispositivos e reprodução audível precisam de teste no **seu Windows**. Teste primeiro por texto e depois pelo microfone, inclusive Parar durante a fala e durante a música. Não consideramos simulações uma validação desses dispositivos.
+
+
+## Diagnóstico do microfone no Windows
+
+Correções feitas sem trocar as bibliotecas de reconhecimento: o código anterior abria sempre mono/16 kHz, sem verificar compatibilidade; persistia somente um índice de dispositivo; usava apenas um limiar fixo e anunciava a escuta antes de abrir o stream. Essas são causas identificadas no código, não um diagnóstico do seu hardware. O código também desativava a escuta após erros da API e podia capturar uma pergunta pelo microfone após uma ativação digitada; esses fluxos foram corrigidos.
+
+1. Abra `iniciar_jarvis.bat`. Na lista **Microfones**, escolha sua entrada, por exemplo o microfone USB, distinguindo a interface MME/WASAPI pelo nome. Clique **Atualizar microfones** após conectar ou remover dispositivos. Se o driver não atualizar a lista, feche e reabra o Jarvis. A seleção é salva em `config.local.json` pelo nome e interface de áudio. Se houver duas entradas indistinguíveis, escolha outra interface ou remova a duplicata. Não há troca automática para outro microfone quando o escolhido desaparece. **Padrão do Windows** é uma escolha explícita e é resolvida como entrada antes de abrir cada captura.
+2. Clique **Testar microfone**. Fique em silêncio por um segundo na calibração; quando aparecer **Ouvindo**, diga “bom dia Jarvis” e deixe um segundo de silêncio. O teste dá até oito segundos para começar a falar e usa a duração máxima das configurações. Ele não executa a saudação nem chama a OpenAI.
+3. Compare **Captura** e **Reconhecimento**. “Captura: Sim” confirma chegada de PCM, mesmo quando o volume é zero. O indicador e pico RMS mostram a energia desse áudio. “Reconhecimento: Sim” e **Texto reconhecido** mostram a transcrição local. Captura confirmada com reconhecimento ausente pode significar silêncio, voz baixa, ruído ou limiar alto. Captura confirmada com falha do modelo é reportada separadamente. O primeiro modelo precisa de internet.
+4. Se não capturar, em **Configurações do Windows → Privacidade e segurança → Microfone** (Windows 10: **Privacidade → Microfone**), habilite acesso ao dispositivo e aos aplicativos da área de trabalho. Confira em **Sistema → Som → Entrada** se o medidor do próprio Windows responde. Feche programas usando modo exclusivo. Um erro do driver nem sempre permite distinguir permissão, dispositivo ocupado e desconexão; o aviso informa essas possibilidades sem inventar o motivo.
+5. Para voz baixa, reduza **Limiar do microfone** nas Configurações, por exemplo `0.005`. Faça a calibração sem falar; clique em **Testar microfone** novamente para recalibrar. Evite música externa e ventiladores próximos. O teste sempre recalibra; a escuta normal reaproveita a calibração para não descartar o começo de cada frase.
+6. Clique **Ativar microfone**. Confira no texto reconhecido “Jarvis”, “Jarvis, que horas são?” e “bom dia Jarvis”. A saudação tem prioridade mesmo se “Jarvis” aparecer antes dela. “Jarvisinho” não ativa o assistente. O Whisper usa idioma `pt`, modelo multilíngue e contexto de português brasileiro; a qualidade real depende do PC e do microfone.
+7. Faça a saudação com MP3 e voz ligados. O indicador deve zerar durante reconhecimento, consultas, música e fala, voltando a responder ao reabrir a captura. Teste também uma falha de consulta: a escuta deve retomar. Clique **Parar** durante fala/música: esse botão desativa a escuta de propósito; para retomar clique **Ativar microfone**. Trocar configurações também desativa de propósito. Desconexão exige reconectar e ativar novamente, sem tentativas infinitas ou seleção silenciosa de outro dispositivo.
+
+A captura é controlada apenas pelo worker `jarvis-runtime`; o botão de teste usa o mesmo worker, fecha a captura anterior e retoma a escuta se ela estava ativa. A enumeração não abre streams. O stream fecha antes da inferência e antes de qualquer áudio do Jarvis. O estado **Ouvindo** só é emitido depois de um stream ativo e nunca durante inferência. PCM nativo float32 usa canais/taxa aceitos pelo PortAudio; downmix para mono e reamostragem filtrada via PyAV (já incluído pelo faster-whisper) preparam áudio de 16 kHz. Silêncio de um segundo encerra a frase; pré-captura de até 500 ms preserva o início após calibração. Perda de blocos, desconexão e ausência de entrega de áudio são erros visíveis.
+
+Logs ficam no terminal com hora, nome do módulo, dispositivo/taxa/canais, calibração RMS e tipo de falha do reconhecedor. Não são criados arquivos de log ou gravações automaticamente, nem registradas credenciais, perguntas ou texto transcrito nos logs. O texto reconhecido aparece na interface para diagnóstico. Para ver os logs desde o início:
+
+```powershell
+.\.venv\Scripts\python.exe main.py
+```
+
+Validação desta correção: **55 testes passaram**; as dependências passaram em `pip check`, a janela foi renderizada em Qt offscreen e o modo texto foi executado. Testes automatizados usam PCM sintético e backend de microfone simulado, incluindo formato nativo estéreo/48 kHz, reamostragem real PyAV, calibração, silêncio, permissão, perda de blocos, fechamento antes da transcrição, cancelamento, identificação persistente, prioridade dos comandos, teste pela interface e retomada após música/fala/falha de API. Não houve teste de microfone físico, permissões reais do Windows ou transcrição real do Whisper nesta correção. Os passos acima são necessários no seu computador.

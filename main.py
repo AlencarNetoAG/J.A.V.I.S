@@ -15,10 +15,13 @@ def main():
     parser.add_argument("--microfone", type=int)
     parser.add_argument("--limiar", type=float)
     args = parser.parse_args()
+    import logging
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     config = carregar()
     for nome in ("voz","velocidade","musica","volume","modelo","microfone","limiar"):
         valor = getattr(args,nome)
         if valor is not None: setattr(config,nome,valor)
+    if args.microfone is not None: config.microfone_identidade = None
     if args.sem_voz: config.sem_voz = True
     if args.sem_musica: config.sem_musica = True
     try: config.validar()

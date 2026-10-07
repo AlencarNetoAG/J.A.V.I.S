@@ -85,10 +85,11 @@ class Preferencias(QDialog):
         self.setWindowTitle("Configurações locais")
         self.setMinimumWidth(480)
         self.config = replace(config)
+        self.identidades = {}
         layout = QVBoxLayout(self)
         form = QFormLayout()
         self.mic = QComboBox()
-        self.mic.addItem("Padrão do Windows", None)
+        self.mic.addItem("Padrão do Windows (entrada atual)", None)
         self.voz = QComboBox()
         self.voz.addItem("Português automático (voz instalada)", None)
         if config.microfone is not None:
@@ -126,16 +127,30 @@ class Preferencias(QDialog):
             self.arquivo.setText(nome)
 
     def atualizar_dispositivos(self, dados):
-        for combo, chave, selecionado in ((self.mic, "microfones", self.config.microfone),(self.voz,"vozes",self.config.voz)):
-            for identificador, nome in dados.get(chave, []):
-                if combo.findData(identificador) < 0:
-                    combo.addItem(nome, identificador)
-            i = combo.findData(selecionado)
-            if i >= 0:
-                combo.setCurrentIndex(i)
+        self.identidades = dados.get("identidades", {})
+        self.mic.clear(); self.mic.addItem("Padrão do Windows (entrada atual)", None)
+        escolhido = None
+        for indice, nome in dados.get("microfones", []):
+            self.mic.addItem(nome, indice)
+            if self.config.microfone_identidade:
+                if self.identidades.get(indice) == self.config.microfone_identidade:
+                    escolhido = indice
+            elif indice == self.config.microfone:
+                escolhido = indice
+        if (self.config.microfone_identidade or self.config.microfone is not None) and escolhido is None:
+            self.mic.addItem("Selecionado indisponível", self.config.microfone)
+            self.mic.setCurrentIndex(self.mic.count()-1)
+        else:
+            self.mic.setCurrentIndex(max(0, self.mic.findData(escolhido)))
+        for identificador, nome in dados.get("vozes", []):
+            if self.voz.findData(identificador) < 0:
+                self.voz.addItem(nome, identificador)
+        i = self.voz.findData(self.config.voz)
+        if i >= 0: self.voz.setCurrentIndex(i)
 
     def resultado(self):
-        return replace(self.config, microfone=self.mic.currentData(), voz=self.voz.currentData(),
+        return replace(self.config, microfone=self.mic.currentData(),
+                       microfone_identidade=self.identidades.get(self.mic.currentData(), self.config.microfone_identidade) if self.mic.currentData() is not None else None, voz=self.voz.currentData(),
                        velocidade=self.velocidade.value(), volume=self.volume.value(),
                        timeout_pergunta=self.timeout.value(), captura_maxima=self.maximo.value(),
                        limiar=self.limiar.value(), modelo=self.modelo.text().strip() or "tiny",
@@ -164,6 +179,19 @@ class Janela(QMainWindow):
         self.nivel = QProgressBar(); self.nivel.setRange(0,100); self.nivel.setValue(0); self.nivel.setTextVisible(False)
         legenda = QLabel("NÍVEL CAPTADO NO MICROFONE · sem captura durante fala ou música"); legenda.setObjectName("subtitulo"); legenda.setWordWrap(True)
         layout.addWidget(legenda); layout.addWidget(self.nivel)
+        microfones = QHBoxLayout()
+        self.entradas = QComboBox(); self.entradas.addItem("Padrão do Windows (entrada atual)", None)
+        self.identidades = {}
+        self.atualizar_mics = QPushButton("Atualizar microfones")
+        self.atualizar_mics.clicked.connect(self.runtime.listar_dispositivos)
+        self.testar_mic = QPushButton("Testar microfone")
+        self.testar_mic.clicked.connect(self.runtime.testar_microfone)
+        microfones.addWidget(self.entradas, 1); microfones.addWidget(self.atualizar_mics); microfones.addWidget(self.testar_mic)
+        layout.addLayout(microfones)
+        self.transcricao = QLabel("Texto reconhecido: ainda não disponível")
+        self.transcricao.setWordWrap(True); layout.addWidget(self.transcricao)
+        self.teste_resultado = QLabel("Teste: fique em silêncio na calibração; depois diga bom dia Jarvis.")
+        self.teste_resultado.setWordWrap(True); layout.addWidget(self.teste_resultado)
         cards = QHBoxLayout()
         self.clima = QLabel("CLIMA · SALGUEIRO\nAinda não consultado\nDiga ou digite bom dia Jarvis")
         self.dolar = QLabel("USD / BRL\nAinda não consultado\nCompra · referência de mercado")
@@ -191,6 +219,11 @@ class Janela(QMainWindow):
         rodape = QWidget(); rodape_layout = QVBoxLayout(rodape); rodape_layout.setContentsMargins(20,0,20,12)
         rodape_layout.addLayout(pergunta); rodape_layout.addLayout(botoes)
         principal.addWidget(rodape); self.setCentralWidget(central)
+        self.entradas.currentIndexChanged.connect(self.selecionar_microfone)
+        self.runtime.dispositivos.connect(self.atualizar_microfones)
+        self.runtime.reconhecido.connect(lambda texto: self.transcricao.setText("Texto reconhecido: " + (texto or "nenhuma fala reconhecida")))
+        self.runtime.diagnostico.connect(self.resultado_microfone)
+        QTimer.singleShot(0, self.runtime.listar_dispositivos)
         self.runtime.estado.connect(self.estado.setText)
         self.runtime.mensagem.connect(self.adicionar)
         self.runtime.ocupado.connect(self.ocupado)
@@ -200,6 +233,44 @@ class Janela(QMainWindow):
         self.timer = QTimer(self); self.timer.timeout.connect(self.atualizar_relogio); self.timer.start(1000)
         self.atualizar_relogio(); self.nucleo.movimento(self.config.reduzir_movimento)
         self.historico.document().setMaximumBlockCount(120)
+
+    def atualizar_microfones(self, dados):
+        self.identidades = dados.get("identidades", {})
+        self.entradas.blockSignals(True)
+        self.entradas.clear(); self.entradas.addItem("Padrão do Windows (entrada atual)", None)
+        escolhido = None
+        for indice, nome in dados.get("microfones", []):
+            self.entradas.addItem(nome, indice)
+            if self.config.microfone_identidade:
+                if self.identidades.get(indice) == self.config.microfone_identidade:
+                    escolhido = indice
+            elif indice == self.config.microfone:
+                escolhido = indice
+        if (self.config.microfone_identidade or self.config.microfone is not None) and escolhido is None:
+            self.entradas.addItem("Selecionado indisponível · reconecte ou escolha outro", self.config.microfone)
+            self.entradas.setCurrentIndex(self.entradas.count()-1)
+        else:
+            self.entradas.setCurrentIndex(max(0, self.entradas.findData(escolhido)))
+        self.entradas.blockSignals(False)
+
+    def selecionar_microfone(self):
+        indice = self.entradas.currentData()
+        identidade = self.identidades.get(indice)
+        if indice is not None and identidade is None:
+            return
+        try:
+            config = replace(self.config, microfone=indice, microfone_identidade=identidade)
+            salvar(config)
+            self.config = config
+            self.runtime.configurar(config)
+            self.transcricao.setText("Texto reconhecido: dispositivo alterado; ative ou teste o microfone")
+        except (OSError, ValueError):
+            self.aviso.setText("Não foi possível salvar a seleção do microfone.")
+
+    def resultado_microfone(self, dados):
+        texto = f"Captura: {dados['captura']}\nReconhecimento: {dados['reconhecimento']}"
+        if "rms" in dados: texto += f"\nPico RMS capturado: {dados['rms']:.4f}"
+        self.teste_resultado.setText(texto)
 
     def atualizar_relogio(self):
         agora = agora_recife()
@@ -218,6 +289,9 @@ class Janela(QMainWindow):
     def ocupado(self, ocupado):
         self.enviar.setEnabled(not ocupado)
         self.preferencias.setEnabled(not ocupado)
+        self.testar_mic.setEnabled(not ocupado)
+        self.atualizar_mics.setEnabled(not ocupado)
+        self.entradas.setEnabled(not ocupado)
 
     def amplitude(self, valor):
         self.nivel.setValue(int(valor * 100)); self.nucleo.amplitude(valor)
@@ -239,6 +313,7 @@ class Janela(QMainWindow):
                 self.config = dialog.resultado(); salvar(self.config)
                 self.runtime.configurar(self.config)
                 self.nucleo.movimento(self.config.reduzir_movimento)
+                self.runtime.listar_dispositivos()
             except (ValueError, OSError):
                 QMessageBox.warning(self,"Configurações","Não foi possível salvar as preferências locais.")
         self.runtime.dispositivos.disconnect(dialog.atualizar_dispositivos)

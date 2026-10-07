@@ -112,10 +112,10 @@ class ReconhecimentoTests(unittest.TestCase):
             def __enter__(self):
                 estado["aberto"] = True
                 estado["streams"] += 1
-                voz = np.full(3200, 5000, dtype=np.int16).tobytes()
-                silencio = np.zeros(3200, dtype=np.int16).tobytes()
-                for bloco in [silencio, voz, voz, *([silencio] * 5)]:
-                    self.callback(bloco, 3200, None, None)
+                voz = np.full((1600, 1), .15, dtype=np.float32)
+                silencio = np.zeros((1600, 1), dtype=np.float32)
+                for bloco in [*([silencio] * 10), voz, voz, *([silencio] * 10)]:
+                    self.callback(bloco, 1600, None, None)
                 return self
 
             def __exit__(self, *args):
@@ -130,7 +130,10 @@ class ReconhecimentoTests(unittest.TestCase):
             return iter([SimpleNamespace(text=texto)]), None
 
         ouvinte = Ouvinte.__new__(Ouvinte)
-        ouvinte.sd = SimpleNamespace(RawInputStream=Stream)
+        ouvinte.sd = SimpleNamespace(InputStream=Stream)
+        ouvinte._formato = lambda: (0, 16000, 1, "Teste")
+        ouvinte.ruido = None
+        ouvinte.chave_audio = None
         ouvinte.np = np
         ouvinte.modelo = SimpleNamespace(transcribe=transcrever)
         ouvinte.dispositivo = None

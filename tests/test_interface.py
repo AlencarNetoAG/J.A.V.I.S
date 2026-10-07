@@ -115,5 +115,73 @@ class InterfaceTests(unittest.TestCase):
                 api.assert_not_called();self.assertEqual(timeout,[7])
             finally:w.close();w.runtime.thread.join(timeout=2)
 
+    def test_teste_microfone_ui_sem_openai_e_selecao_persistente(self):
+        from types import SimpleNamespace
+        ouvinte = SimpleNamespace(ultimo={"captura":True,"pico_rms":.04}, ruido=None,
+            capturar_texto=lambda *args,**kwargs:"Bom dia, Jarvis!")
+        with patch("jarvis.runtime.Ouvinte",return_value=ouvinte), patch("jarvis.runtime.Conversa.perguntar") as api, patch("jarvis.interface.salvar") as salvar:
+            w=Janela(Configuracoes(sem_voz=True,sem_musica=True)); w.show()
+            try:
+                self.esperar(lambda:w.runtime.fila.empty())
+                w.atualizar_microfones({"microfones":[(3,"USB · WASAPI")],"identidades":{3:["USB","WASAPI"]}})
+                w.entradas.setCurrentIndex(1)
+                self.assertEqual(salvar.call_args.args[0].microfone_identidade,["USB","WASAPI"])
+                w.testar_mic.click()
+                self.esperar(lambda:"Sim · Bom dia" in w.teste_resultado.text())
+                self.assertIn("Captura: Sim",w.teste_resultado.text())
+                self.assertIn("Bom dia",w.transcricao.text());api.assert_not_called()
+                w.atualizar_microfones({"microfones":[],"identidades":{}})
+                self.assertIn("indisponível",w.entradas.currentText())
+                self.assertEqual(w.config.microfone_identidade,["USB","WASAPI"])
+            finally:w.close();w.runtime.thread.join(timeout=2)
+
+    def test_escuta_retoma_apos_musica_fala_e_erro_de_api(self):
+        from types import SimpleNamespace
+        from jarvis.cliente_openai import ErroOpenAI
+        from jarvis.cancelamento import verificar
+        eventos=[]; etapa={"n":0}
+        def capturar(cancel, **kwargs):
+            etapa["n"]+=1; eventos.append("captura")
+            if etapa["n"]==1:return "Bom dia Jarvis"
+            if etapa["n"]==2:
+                w.runtime.ultima_voz=float("-inf")  # Simula próxima ativação fora do intervalo de proteção.
+                return "Jarvis, explique Python"
+            cancel.wait(.05);verificar(cancel);return "sem comando"
+        def consulta(*args):eventos.append("consulta");return "Bom dia de teste"
+        musica=SimpleNamespace(iniciar=lambda:eventos.append("musica"),abaixar_para_fala=lambda:None,
+            finalizar=lambda **kwargs:eventos.append("fade"),fechar=lambda:eventos.append("audio parado"))
+        voz=SimpleNamespace(falar_cancelavel=lambda *args:eventos.append("fala"),fechar=lambda:None)
+        with patch("jarvis.runtime.Ouvinte",return_value=SimpleNamespace(capturar_texto=capturar)),patch("jarvis.runtime.Musica",return_value=musica),patch("jarvis.runtime.Voz",return_value=voz),patch("jarvis.runtime.consultar_painel",side_effect=consulta),patch("jarvis.runtime.Conversa.perguntar",side_effect=ErroOpenAI("Serviço indisponível")):
+            w=Janela();w.show()
+            try:
+                w.mic.click()
+                self.esperar(lambda:etapa["n"]>=3)
+                self.assertEqual(eventos[:7],["captura","musica","consulta","fala","fade","audio parado","captura"])
+                self.assertTrue(w.runtime.ativo)
+                self.assertIn("Serviço indisponível",w.aviso.text())
+            finally:w.close();w.runtime.thread.join(timeout=2)
+
+    def test_cancelar_teste_com_mic_ativo_retoma_um_so_capturador(self):
+        from types import SimpleNamespace
+        from jarvis.cancelamento import verificar
+        chamadas=[]; iniciou=threading.Event(); bloqueou=threading.Event()
+        def capturar(cancel,**kwargs):
+            chamadas.append("teste" if "timeout" in kwargs else "escuta")
+            if "timeout" in kwargs: iniciou.set()
+            else: bloqueou.set()
+            cancel.wait(2);verificar(cancel)
+        ouvinte=SimpleNamespace(capturar_texto=capturar,ultimo={"captura":True},ruido=None)
+        with patch("jarvis.runtime.Ouvinte",return_value=ouvinte):
+            w=Janela(Configuracoes(sem_voz=True));w.show()
+            try:
+                w.mic.click();self.esperar(bloqueou.is_set)
+                self.assertTrue(w.runtime.testar_microfone());self.esperar(iniciou.is_set)
+                # Interromper apenas o teste preserva a ativação. Parar desativa explicitamente.
+                w.runtime.cancelar.set()
+                self.esperar(lambda:chamadas.count("escuta")>=2)
+                self.assertTrue(w.runtime.ativo)
+                w.parar.click();self.esperar(lambda:not w.runtime.ativo)
+            finally:w.close();w.runtime.thread.join(timeout=2)
+
 
 if __name__=="__main__":unittest.main()
