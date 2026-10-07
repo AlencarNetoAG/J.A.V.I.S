@@ -8,3 +8,8 @@ tzdata==2025.2
 PySide6==6.9.3
 openai==2.8.1
 python-dotenv==1.1.1
+pypdf==6.19.0
+Send2Trash==2.1.0
+keyring==25.7.0; sys_platform == 'win32'
+pycaw==20260927; sys_platform == 'win32'
+winsdk==1.0.0b10; sys_platform == 'win32'

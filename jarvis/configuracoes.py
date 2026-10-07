@@ -1,5 +1,5 @@
 """Preferências locais, sem credenciais."""
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from pathlib import Path
 import json
 
@@ -23,6 +23,10 @@ class Configuracoes:
     reduzir_movimento: bool = False
     sem_voz: bool = False
     sem_musica: bool = False
+    pc_suspenso: bool = False
+    permissoes_pc: dict = field(default_factory=lambda:{"arquivos":True,"aplicativos":True,"audio":True,"spotify":True})
+    pastas_autorizadas: list[str] = field(default_factory=list)
+    fones_midia_externa: bool = False
 
     def validar(self):
         if not (80 <= self.velocidade <= 300 and 0 <= self.volume <= 1
@@ -33,6 +37,12 @@ class Configuracoes:
         if self.microfone_identidade is not None and (not isinstance(self.microfone_identidade, list)
                 or len(self.microfone_identidade) != 2 or not all(isinstance(v, str) for v in self.microfone_identidade)):
             raise ValueError("Identidade do microfone inválida.")
+        if type(self.pc_suspenso) is not bool or type(self.fones_midia_externa) is not bool:
+            raise ValueError("Permissão inválida.")
+        if not isinstance(self.permissoes_pc,dict) or set(self.permissoes_pc)!={"arquivos","aplicativos","audio","spotify"} or not all(type(v) is bool for v in self.permissoes_pc.values()):
+            raise ValueError("Categorias de permissão inválidas.")
+        if not isinstance(self.pastas_autorizadas,list) or len(self.pastas_autorizadas)>30 or not all(isinstance(p,str) and p for p in self.pastas_autorizadas):
+            raise ValueError("Pastas autorizadas inválidas.")
         return self
 
 

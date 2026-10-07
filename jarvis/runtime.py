@@ -1,6 +1,7 @@
 """Um único worker serializa reconhecimento, consultas e áudio; Qt só recebe sinais."""
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+import json
 import logging
 import queue
 import sys
@@ -13,12 +14,17 @@ from .cancelamento import Cancelado, Eventos, verificar
 from .cliente_openai import Conversa, ErroOpenAI
 from .clima import consultar_clima
 from .comandos import interpretar
-from .cotacao import consultar_cotacao
+from .cotacao import consultar_cotacao, numero_por_extenso
 from .horario import agora_recife
 from .musica import Musica
-from .reconhecimento import Ouvinte, ErroMicrofone, ErroReconhecedor, listar_microfones
+from .reconhecimento import Ouvinte, ErroMicrofone, ErroReconhecedor, listar_microfones, normalizar
 from .saudacao import montar_saudacao
 from .voz import Voz, ErroVoz
+from .ferramentas.base import Decisoes, ErroFerramenta, resultado
+from .ferramentas.controle import ControlePC
+from .ferramentas.spotify import Spotify
+from .ferramentas.windows import Windows
+from .ferramentas.esquemas import REGISTRO
 
 
 def consultar_painel(cancelar, publicar):
@@ -61,6 +67,9 @@ class Runtime(QObject):
     diagnostico = Signal(dict)
     audio = Signal(dict)
     falando = Signal(bool)
+    confirmacao = Signal(dict)
+    acao = Signal(dict)
+    config_pc = Signal(dict)
 
     def __init__(self, config):
         super().__init__()
@@ -83,8 +92,22 @@ class Runtime(QObject):
         self.comandos_audio = queue.Queue()
         self.musica = None
         self.finalizacao_musica = False
+        self.cancelar_acao_evento = threading.Event()
+        self.ouvinte = None
+        self.midia_externa = threading.Event()
+        self.midia_antes_acao = False
+        self.fonte_externa = "spotify"
+        self.midia_versao = 0
+        self.monitor_externo_erro = None
+        self.decisoes = Decisoes(lambda p:self.emitir(self.confirmacao,p),self._ouvir_decisao)
+        windows = Windows(antes_audio=self._midia_externa)
+        spotify = Spotify(self.decisoes,antes_audio=self._midia_externa)
+        self.controle = ControlePC(lambda:self.config,self.decisoes,self.cancelar_acao_evento,
+            local=self._controle_mp3,windows=windows,spotify=spotify,publicar=self._estado_acao)
         self.audio_thread = threading.Thread(target=self._loop_player, name="jarvis-player", daemon=True)
         self.audio_thread.start()
+        self.monitor_thread = threading.Thread(target=self._loop_midia_externa, name="jarvis-midia", daemon=True)
+        self.monitor_thread.start()
         self.thread = threading.Thread(target=self._loop, name="jarvis-runtime", daemon=True)
         self.thread.start()
 
@@ -96,12 +119,105 @@ class Runtime(QObject):
         texto = texto.strip()[:4000]
         if not texto:
             return False
+        if self.decisoes.pendente:
+            return self._responder_decisao(texto,self.decisoes.pendente)
         with self.lock:
             if self.trabalhando or not self.fila.empty():
                 return False
             self.fila.put_nowait(("texto", texto))
             self.cancelar.set()  # Fecha captura atual antes de tocar qualquer áudio.
             return True
+
+    def _responder_decisao(self,texto,pendente):
+        t=normalizar(texto)
+        if t.startswith("jarvis "):t=t[7:]
+        if t in ("cancelar","cancelo","nao","nao confirmar"):
+            self.decisoes.cancelar();return True
+        if not pendente["opcoes"]:
+            return self.decisoes.responder(pendente["id"],True) if t in ("confirmar","confirmo") else False
+        if t.startswith("opcao "):t=t[6:]
+        for i in range(len(pendente["opcoes"])):
+            if t in (str(i+1),normalizar(numero_por_extenso(i+1))):return self.decisoes.responder(pendente["id"],i)
+        return False
+
+    def _ouvir_decisao(self,pendente,cancelar):
+        if not self.ativo or self.ouvinte is None:return
+        if self.musica and self.musica.estado_atual()=="tocando":return
+        if self.midia_externa.is_set() and not self.config.fones_midia_externa:return
+        try:
+            texto=self._capturar(self.ouvinte,timeout=.6,maximo=3,
+                nivel=lambda v:self.emitir(self.nivel,v),estado=lambda s:self.emitir(self.estado,s))
+            verificar(cancelar)
+            if texto:
+                self.emitir(self.reconhecido,texto)
+                self._responder_decisao(texto,pendente)
+        except Cancelado:
+            verificar(cancelar)
+        except (ErroMicrofone,ErroReconhecedor) as erro:
+            self.emitir(self.mensagem,"Aviso",str(erro)+" Confirme pelo botão.")
+            self.ativo=False;self.emitir(self.microfone,False)
+
+    def cancelar_acao(self):
+        self.cancelar_acao_evento.set();self.decisoes.cancelar();self.captura_interromper.set()
+        self.emitir(self.mensagem,"Aviso","Ação cancelada. Etapas futuras serão interrompidas; ações já concluídas não são desfeitas.")
+
+    def suspender_pc(self):
+        self.config=replace(self.config,pc_suspenso=not self.config.pc_suspenso)
+        if self.config.pc_suspenso:self.cancelar_acao()
+        self.emitir(self.config_pc,{"pc_suspenso":self.config.pc_suspenso})
+
+    def configurar_pc(self,config):
+        self.cancelar_acao()
+        self.config=replace(self.config,permissoes_pc=dict(config.permissoes_pc),pastas_autorizadas=list(config.pastas_autorizadas),
+                            fones_midia_externa=config.fones_midia_externa)
+        self.emitir(self.config_pc,{"pc_suspenso":self.config.pc_suspenso})
+
+    def ferramenta_pc(self,nome,args=None):
+        if nome not in REGISTRO and nome not in ("spotify_conectar","spotify_desconectar"):return False
+        with self.lock:
+            if self.trabalhando or not self.fila.empty():return False
+            self.fila.put_nowait(("ferramenta_pc",json.dumps({"nome":nome,"args":args or {}})))
+            self.cancelar.set();return True
+
+    def _estado_acao(self,dados):
+        self.emitir(self.acao,dados)
+        if dados["status"]=="em andamento":
+            self.midia_antes_acao=self.midia_externa.is_set()
+            self.emitir(self.estado,"Executando: "+dados["ferramenta"].replace("_"," "))
+        if dados.get("fonte") in ("spotify","sistema") and type(dados.get("tocando")) is bool:
+            self._midia_externa(dados["fonte"],dados["tocando"])
+        if dados.get("audio_nao_executado"):
+            self._midia_externa(self.fonte_externa,self.midia_antes_acao)
+
+    def _midia_externa(self,fonte,tocando):
+        self.fonte_externa=fonte
+        self.midia_versao+=1
+        self.midia_externa.set() if tocando else self.midia_externa.clear()
+
+    def _controle_mp3(self,acao,valor,cancelar):
+        musica=self.musica
+        estado=musica.estado_atual() if musica else "parada"
+        if acao in ("estado","atual"):return resultado("MP3 da saudação: "+estado,estado=estado)
+        if acao=="volume":
+            self.preferencia_audio("volume",valor/100)
+            self.emitir(self.config_pc,{"pc_suspenso":self.config.pc_suspenso})
+            if musica:
+                fim=time.monotonic()+2
+                while time.monotonic()<fim:
+                    verificar(cancelar)
+                    if abs(musica.volume-valor/100)<.01:break
+                    time.sleep(.02)
+                else:raise ErroFerramenta("Não consegui verificar o volume do MP3.")
+            return resultado(f"Volume do MP3 configurado em {valor} por cento.")
+        if estado=="parada":raise ErroFerramenta("O MP3 da saudação não está carregado/em reprodução.")
+        self.controlar_musica(acao)
+        esperado="pausada" if acao=="pausar" else "tocando"
+        fim=time.monotonic()+2
+        while time.monotonic()<fim:
+            verificar(cancelar)
+            if musica.estado_atual()==esperado:return resultado("MP3 da saudação: "+esperado+"; estado verificado.")
+            time.sleep(.02)
+        raise ErroFerramenta("Não consegui verificar a alteração do MP3.")
 
     def alternar_microfone(self):
         with self.lock:
@@ -161,11 +277,30 @@ class Runtime(QObject):
         finally:
             if self.musica: self.musica.fechar()
 
+    def _loop_midia_externa(self):
+        # Consultas WinRT não atrasam os controles independentes do MP3.
+        while not self.shutdown.wait(2):
+            if not self.midia_externa.is_set() or self.trabalhando:continue
+            versao,fonte=self.midia_versao,self.fonte_externa
+            try:
+                sessoes=self.controle.windows.fontes_midia()
+                selecionadas=[s for s in sessoes if ("spotify" in s["id"].casefold())==(fonte=="spotify")]
+                if selecionadas and versao==self.midia_versao and not self.trabalhando:
+                    self.midia_externa.set() if any(s["tocando"] for s in selecionadas) else self.midia_externa.clear()
+            except Exception as erro:
+                if self.monitor_externo_erro!=type(erro).__name__:
+                    self.monitor_externo_erro=type(erro).__name__
+                    logging.getLogger(__name__).warning("Monitor de mídia externa indisponível: %s",type(erro).__name__)
+                # Estado desconhecido mantém a pausa; não inventar ausência de reprodução.
+
     def _capturar(self, ouvinte, **opcoes):
         while True:
             verificar(self.cancelar)
             if self.audio_inseguro.is_set():
                 raise ErroMicrofone("Não foi confirmado o fim da fala. Feche e reabra o Jarvis antes de escutar.")
+            if self.midia_externa.is_set() and not self.config.fones_midia_externa:
+                self.emitir(self.estado,"Microfone pausado · mídia externa. Pause no painel ou habilite uso com fones.")
+                self.cancelar.wait(.1);continue
             if self.musica and self.musica.estado_atual() == "falha":
                 raise ErroMicrofone("Não foi confirmado o fim da música. Feche e reabra o Jarvis antes de escutar.")
             self.captura_gate.acquire()
@@ -189,6 +324,7 @@ class Runtime(QObject):
             self.cancelar.wait(.05)
 
     def parar(self):
+        self.cancelar_acao_evento.set();self.decisoes.cancelar()
         self.parar_audios()
         with self.lock:
             self.ativo = False
@@ -237,7 +373,7 @@ class Runtime(QObject):
                 com = pythoncom
             except ImportError:
                 pass
-        conversa = Conversa()
+        conversa = Conversa(self.controle)
         ouvinte = None
         assinatura = None
         self.voz = None
@@ -277,6 +413,7 @@ class Runtime(QObject):
                             self.emitir(self.estado, "Preparando entrada de áudio…")
                             ouvinte = None
                             ouvinte = Ouvinte(*nova)
+                            self.ouvinte = ouvinte
                             assinatura = nova
                         verificar(self.cancelar)
                         if origem == "teste_microfone":
@@ -320,6 +457,8 @@ class Runtime(QObject):
                             continue
                         if time.monotonic() - self.ultima_voz < 3:
                             continue
+                    elif origem=="ferramenta_pc":
+                        tipo,pergunta="pc_painel",texto
                     else:
                         tipo, pergunta = interpretar(texto)
                         if tipo == "ignorar":
@@ -331,8 +470,19 @@ class Runtime(QObject):
                         self.trabalhando = True
                         self.fala_cancelar.clear()
                         self.todos_audio_cancelar.clear()
+                        self.cancelar_acao_evento.clear()
                     self.emitir(self.ocupado, True)
                     try:
+                        if tipo=="pc_painel":
+                            pedido=json.loads(pergunta);nome=pedido["nome"]
+                            evento=Eventos(self.cancelar,self.cancelar_acao_evento)
+                            if nome in ("spotify_conectar","spotify_desconectar"):
+                                self.emitir(self.estado,"Autorizando Spotify no navegador…" if nome=="spotify_conectar" else "Desconectando Spotify…")
+                                r=self.controle.conta_spotify(nome,evento)
+                            else:r=self.controle.executar(nome,json.dumps(pedido["args"]),evento)
+                            self.emitir(self.mensagem,"Jarvis",r["mensagem"])
+                            self._falar(r["mensagem"],config)
+                            continue
                         if tipo == "aguardar":
                             self._falar("Sim, senhor?", config)
                             verificar(self.cancelar)
@@ -395,7 +545,7 @@ class Runtime(QObject):
                         self.emitir(self.estado, "Preparando escuta" if self.ativo else "Desativado")
                 except Cancelado:
                     self.emitir(self.estado, "Desativado" if not self.ativo else "Preparando escuta")
-                except (ErroOpenAI, ErroMicrofone, ErroReconhecedor, ErroVoz) as erro:
+                except (ErroOpenAI, ErroMicrofone, ErroReconhecedor, ErroVoz, ErroFerramenta) as erro:
                     self.emitir(self.mensagem, "Aviso", str(erro))
                     if origem == "teste_microfone" and ouvinte is None:
                         self.emitir(self.diagnostico, {"captura": "Não · captura não iniciada", "reconhecimento": str(erro)})
@@ -417,6 +567,7 @@ class Runtime(QObject):
             if self.voz:
                 self.voz.fechar()
             conversa.fechar()
+            self.controle.fechar()
             if com:
                 com.CoUninitialize()
 

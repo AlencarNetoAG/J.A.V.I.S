@@ -9,13 +9,14 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QTextBrowser, QLineEdit, QProgressBar, QScrollArea,
     QDialog, QFormLayout, QComboBox, QSpinBox, QDoubleSpinBox, QCheckBox,
-    QFileDialog, QDialogButtonBox, QMessageBox, QSlider, QBoxLayout,
+    QFileDialog, QDialogButtonBox, QMessageBox, QSlider, QBoxLayout, QGroupBox,
 )
 from dataclasses import replace
 
 from .configuracoes import carregar, salvar
 from .horario import agora_recife
 from .runtime import Runtime
+from .interface_pc import PermissoesDialog, ConfirmacaoDialog
 
 ESTILO = """
 QWidget { background:#050d17; color:#d7eaf5; font-family:'Segoe UI'; font-size:14px; }
@@ -178,6 +179,14 @@ class Janela(QMainWindow):
         subtitulo = QLabel("ASSISTENTE PESSOAL  /  RECONHECIMENTO LOCAL  /  SALGUEIRO · PE")
         subtitulo.setObjectName("subtitulo"); subtitulo.setWordWrap(True); layout.addWidget(subtitulo)
         self.estado = QLabel("Desativado · use texto ou ative o microfone"); self.estado.setWordWrap(True); layout.addWidget(self.estado)
+        pc_botoes=QHBoxLayout()
+        self.permissoes_pc=QPushButton("Permissões do PC");self.permissoes_pc.clicked.connect(self.configurar_pc)
+        self.suspender_pc=QPushButton("Retomar controle do PC" if self.config.pc_suspenso else "Suspender controle do PC");self.suspender_pc.clicked.connect(self.runtime.suspender_pc)
+        self.cancelar_acao=QPushButton("Cancelar ação");self.cancelar_acao.clicked.connect(self.runtime.cancelar_acao)
+        for b in (self.permissoes_pc,self.suspender_pc,self.cancelar_acao):pc_botoes.addWidget(b)
+        layout.addLayout(pc_botoes)
+        self.acao_pc=QLabel("Ações do PC: nenhuma em andamento");self.acao_pc.setTextFormat(Qt.TextFormat.PlainText);self.acao_pc.setWordWrap(True);layout.addWidget(self.acao_pc)
+        self.dialog_decisao=None
         centro = QHBoxLayout(); self.centro_layout = centro
         self.nucleo = Nucleo(); centro.addWidget(self.nucleo, 1)
         self.relogio = QLabel(); self.relogio.setObjectName("cartao"); self.relogio.setWordWrap(True); centro.addWidget(self.relogio, 1)
@@ -198,6 +207,22 @@ class Janela(QMainWindow):
         self.transcricao.setWordWrap(True); layout.addWidget(self.transcricao)
         self.teste_resultado = QLabel("Teste: fique em silêncio na calibração; depois diga bom dia Jarvis.")
         self.teste_resultado.setWordWrap(True); layout.addWidget(self.teste_resultado)
+        spotify=QGroupBox("Spotify · conta e mídia externa");sp_layout=QVBoxLayout(spotify)
+        conta=QHBoxLayout()
+        self.conectar_spotify=QPushButton("Conectar Spotify");self.conectar_spotify.clicked.connect(lambda:self.runtime.ferramenta_pc("spotify_conectar"))
+        self.desconectar_spotify=QPushButton("Desconectar");self.desconectar_spotify.clicked.connect(lambda:self.runtime.ferramenta_pc("spotify_desconectar"))
+        atual=QPushButton("Música atual");atual.clicked.connect(lambda:self.runtime.ferramenta_pc("spotify_controlar",{"acao":"atual"}))
+        for b in (self.conectar_spotify,self.desconectar_spotify,atual):conta.addWidget(b)
+        sp_layout.addLayout(conta)
+        reproduzir=QHBoxLayout()
+        self.spotify_botoes=[self.conectar_spotify,self.desconectar_spotify,atual]
+        for nome,acao in (("Pausar Spotify","pausar"),("Retomar Spotify","retomar"),("Anterior","anterior"),("Próxima","proxima")):
+            botao=QPushButton(nome);botao.clicked.connect(lambda checked=False,a=acao:self.runtime.ferramenta_pc("spotify_controlar",{"acao":a}));reproduzir.addWidget(botao);self.spotify_botoes.append(botao)
+        sp_layout.addLayout(reproduzir)
+        volume_sp=QHBoxLayout();volume_sp.addWidget(QLabel("Volume Spotify"))
+        self.volume_spotify=QSpinBox();self.volume_spotify.setRange(0,100);self.volume_spotify.setValue(50);self.volume_spotify.setSuffix("%")
+        aplicar_sp=QPushButton("Aplicar volume");aplicar_sp.clicked.connect(lambda:self.runtime.ferramenta_pc("audio_volume",{"fonte":"spotify","percentual":self.volume_spotify.value()}));self.spotify_botoes.append(aplicar_sp)
+        volume_sp.addWidget(self.volume_spotify);volume_sp.addWidget(aplicar_sp);sp_layout.addLayout(volume_sp);layout.addWidget(spotify)
         cards = QHBoxLayout(); self.cards_layout = cards
         self.clima = QLabel("CLIMA · SALGUEIRO\nAinda não consultado\nDiga ou digite bom dia Jarvis")
         self.dolar = QLabel("USD / BRL\nAinda não consultado\nCompra · referência de mercado")
@@ -266,6 +291,9 @@ class Janela(QMainWindow):
         self.runtime.estado.connect(self.estado_runtime)
         self.runtime.audio.connect(self.atualizar_audio)
         self.runtime.falando.connect(self.estado_fala)
+        self.runtime.acao.connect(self.estado_acao_pc)
+        self.runtime.confirmacao.connect(self.confirmacao_pc)
+        self.runtime.config_pc.connect(self.atualizar_config_pc)
         self.runtime.mensagem.connect(self.adicionar)
         self.runtime.ocupado.connect(self.ocupado)
         self.runtime.nivel.connect(self.amplitude)
@@ -274,6 +302,33 @@ class Janela(QMainWindow):
         self.timer = QTimer(self); self.timer.timeout.connect(self.atualizar_relogio); self.timer.start(1000)
         self.atualizar_relogio(); self.nucleo.movimento(self.config.reduzir_movimento)
         self.historico.document().setMaximumBlockCount(120)
+
+    def configurar_pc(self):
+        dialog=PermissoesDialog(self.runtime.config,self)
+        if dialog.exec()==QDialog.DialogCode.Accepted:
+            try:
+                self.runtime.configurar_pc(dialog.resultado());self.config=self.runtime.config;salvar(self.config)
+            except (ValueError,OSError):QMessageBox.warning(self,"Permissões","Não foi possível salvar as permissões.")
+
+    def atualizar_config_pc(self,dados):
+        self.config=self.runtime.config
+        self.suspender_pc.setText("Retomar controle do PC" if self.config.pc_suspenso else "Suspender controle do PC")
+        self.volume_musica.blockSignals(True);self.volume_musica.setValue(round(self.config.volume*100));self.volume_musica.blockSignals(False)
+        self.percentual_musica.setText(f"{self.volume_musica.value()}%")
+        self.salvar_audio_timer.start(250)
+
+    def estado_acao_pc(self,dados):
+        texto=dados["ferramenta"].replace('_',' ')+" · "+dados["status"]
+        if dados.get("mensagem"):texto+="\n"+dados["mensagem"]
+        self.acao_pc.setText(texto)
+
+    def confirmacao_pc(self,pedido):
+        if pedido.get("fechado"):
+            if self.dialog_decisao and self.dialog_decisao.pedido["id"]==pedido["id"]:
+                self.dialog_decisao.finalizar();self.dialog_decisao=None
+            return
+        if self.dialog_decisao:self.dialog_decisao.finalizar()
+        self.dialog_decisao=ConfirmacaoDialog(pedido,self.runtime.decisoes,self);self.dialog_decisao.show()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -315,7 +370,7 @@ class Janela(QMainWindow):
         self.estado.setText(texto)
         t = texto.casefold()
         modo = ("falando" if t.startswith("falando") else "ouvindo" if "ouvindo" in t or "calibrando" in t
-                else "processando" if any(p in t for p in ("consultando","reconhecendo","carregando","finalizando")) else "aguardando")
+                else "processando" if any(p in t for p in ("consultando","reconhecendo","carregando","finalizando","executando","autorizando")) else "aguardando")
         self.nucleo.estado_operacao(modo)
 
     def atualizar_microfones(self, dados):
@@ -376,6 +431,7 @@ class Janela(QMainWindow):
         self.testar_mic.setEnabled(not ocupado)
         self.atualizar_mics.setEnabled(not ocupado)
         self.entradas.setEnabled(not ocupado)
+        for b in self.spotify_botoes:b.setEnabled(not ocupado)
 
     def amplitude(self, valor):
         self.nivel.setValue(int(valor * 100)); self.nucleo.amplitude(valor)
@@ -414,6 +470,7 @@ class Janela(QMainWindow):
         if self.salvar_audio_timer.isActive():
             self.salvar_audio_timer.stop()
             self.salvar_audio()
+        if self.dialog_decisao:self.dialog_decisao.finalizar()
         self.runtime.fechar()
         event.accept()
 
@@ -426,5 +483,6 @@ def iniciar(config=None):
     resultado = app.exec()
     janela.runtime.fechar()
     janela.runtime.audio_thread.join(timeout=2)
+    janela.runtime.monitor_thread.join(timeout=3)
     janela.runtime.thread.join(timeout=2)
     return resultado

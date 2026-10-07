@@ -9,7 +9,7 @@ Aplicação desktop em Python/PySide6 com painel escuro, anéis animados, relóg
 - **“bom dia Jarvis”**: tem prioridade depois de concluir a frase; música local, clima, horário de Recife e dólar. Funciona **sem chave da OpenAI**.
 - Perguntas por texto funcionam no painel e no terminal. “Limpar conversa” remove o contexto local desta sessão; não apaga dados do serviço externo.
 
-A música toca apenas na saudação. O reconhecimento permanece pausado enquanto o próprio Jarvis fala ou toca música. O botão **Parar** desativa o microfone, interrompe áudios e descarta resultados cancelados. Uma chamada de rede ou inferência já em andamento pode terminar até seu timeout; não aparecerá como resposta depois do cancelamento.
+O MP3 local toca na saudação; o Spotify tem integração separada, descrita em Controle do PC. O reconhecimento permanece pausado enquanto o próprio Jarvis fala ou toca música. O botão **Parar** desativa o microfone, interrompe áudios e descarta resultados cancelados. Uma chamada de rede ou inferência já em andamento pode terminar até seu timeout; não aparecerá como resposta depois do cancelamento.
 
 ## 1. Preparar o Python
 
@@ -25,7 +25,7 @@ py -3.11 -m venv .venv
 
 Os comandos usam diretamente o Python do ambiente virtual. Não é necessário ativá-lo nem alterar a política de execução do PowerShell. Internet é necessária para instalar dependências e baixar o modelo; depois, reconhecimento e síntese funcionam localmente.
 
-Se já tem o ambiente da versão anterior, **não recrie a pasta `.venv`**. Execute apenas o comando de instalação com `-r requirements.txt` para incluir as novas dependências, incluindo PySide6, SDK OpenAI e python-dotenv. Use Python **3.11 x64**, como na versão que já funcionou; Python 3.14 não é suportado por estas versões de dependências.
+Se já tem o ambiente da versão anterior, **não recrie a pasta `.venv`**. Execute apenas o comando de instalação com `-r requirements.txt` para incluir as novas dependências de interface, ferramentas e integração Windows. Use Python **3.11 x64**, como na versão que já funcionou; Python 3.14 não é suportado por estas versões de dependências.
 
 ## 2. Abrir o painel
 
@@ -320,3 +320,102 @@ Os anéis do painel são desenhados pela aplicação e mudam a velocidade confor
 5. Redimensione a janela e confirme que os controles continuam legíveis. Feche o aplicativo com MP3/fala ativos e verifique que o áudio para e o microfone é liberado.
 
 **67 testes passaram**, assim como `pip check` e a renderização Qt em 1000×760 e 580×420. Testes automatizados cobrem pause/unpause sem recarga, volume independente, fade pausado, limpeza da fila de fala, purga que falha, controles durante consulta, texto preservado, resposta sem voz, retomada da captura e sincronização ao retomar MP3, além dos testes anteriores. Houve também reprodução real de **um MP3 sintético de teste** no SDL com saída `dummy`: posição estável na pausa (116/116 ms), avanço ao retomar (246 ms), volume, stop, reinício e fade. Isso não valida som audível, a faixa AC/DC, SAPI5 do Windows ou seu microfone físico. Esses recursos e o visual do vídeo permanecem sujeitos às validações acima.
+
+## Controle do PC por voz e texto
+
+Esta versão acrescenta ferramentas reais de **arquivos, aplicativos, áudio e Spotify**. O modelo interpreta o pedido pela Responses API; uma camada local valida parâmetros, permissões e alvos antes de agir. Não há ferramenta de terminal, PowerShell, código arbitrário, instalação, compras, mensagens ou publicação. A saudação e os controles anteriores continuam disponíveis.
+
+### Atualizar a instalação existente
+
+Copie os arquivos novos para sua pasta atual, preservando `.venv`, `.env`, `config.local.json`, `aplicativos.local.json` e seu MP3. Depois, na pasta onde está `main.py`, execute uma vez:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip check
+```
+
+Abra `iniciar_jarvis.bat`. **Não recrie o ambiente que já funciona com Python 3.11 x64.** As dependências novas incluem pypdf, Send2Trash e, somente no Windows, keyring, pycaw e winsdk. O Windows 10/11 disponibiliza as APIs de mídia utilizadas; alguns aplicativos não expõem todos os controles.
+
+1. Abra **Permissões do PC**. As quatro categorias começam habilitadas; desmarque as que não deseja usar. O acesso inicial a arquivos fica nas pastas pessoais conhecidas do Windows, respeitando OneDrive/redirecionamento. Autorize outras pastas pelo seletor, se necessário.
+2. Nesse painel, use **Editar catálogo de aplicativos**. Spotify, navegador padrão e Bloco de Notas já estão cadastrados. Adicione outros programas escolhendo o `.exe` ou `.lnk` instalado, um nome e apelidos. O catálogo fica em `aplicativos.local.json`; caminhos não são escolhidos pelo modelo. Atalhos sem processo identificável podem abrir, mas a confirmação da janela/foco poderá ficar indisponível.
+3. Configure sua OpenAI no `.env`, conforme a seção anterior. Pedidos em linguagem natural precisam da API, inclusive abrir aplicativos por voz. Os botões de mídia/OAuth executam ferramentas locais sem precisar da chave OpenAI. Ative o microfone ou digite no painel.
+
+| Exemplo | Ação |
+| --- | --- |
+| “Jarvis, abra o Spotify” | Abre o Spotify instalado pelo catálogo; não exige OAuth. |
+| “Jarvis, abra o navegador” | Usa o navegador padrão e verifica uma janela compatível quando possível. |
+| “Jarvis, encontre o arquivo relatório” | Busca nomes nas raízes autorizadas; apresenta números e caminhos. |
+| “Jarvis, abra a pasta Downloads” | Abre a pasta pessoal pelo aplicativo padrão. |
+| “Jarvis, abra este PDF” | Usa o último PDF selecionado ou solicita escolha entre os resultados. |
+| “Jarvis, resuma este PDF” | Solicita consentimento específico antes de ler/enviar seu texto à OpenAI. |
+| “Jarvis, copie [caminho] para [caminho completo do destino]” | Copia um arquivo e verifica o conteúdo por SHA-256. |
+| “Jarvis, crie um arquivo notas.txt em [pasta] com o texto [conteúdo]” | Cria documento de texto dentro de uma raiz autorizada. |
+| “Jarvis, renomeie [arquivo] para [nome]” | Renomeia; confirma se o destino já existe. |
+| “Jarvis, exclua [arquivo]” | Pede confirmação para enviar o arquivo à Lixeira. |
+| “Jarvis, coloque o volume em cinquenta por cento” | Ajusta e lê de volta o volume geral do Windows. |
+| “Jarvis, pause a música” | Identifica fontes locais; solicita escolha se houver mais de uma. |
+| “Jarvis, próxima música no Spotify” | Usa Web API ou sessão oficial de mídia local, quando disponível. |
+
+Use **um pedido de ação por vez** nesta versão. Para criar/copiar/mover, indique pasta existente e nome de destino; o Jarvis não cria árvores de diretórios. Arquivos executáveis/scripts não são abertos pela ferramenta de documentos nem criados pela ferramenta de texto. Aplicativos confiáveis são lançados sem argumentos de terminal. O Windows pode negar foco; nesse caso o Jarvis informa a limitação sem contornar a proteção.
+
+Busca: até cinco segundos, 20 mil entradas ou 30 resultados; não segue links/junções de pastas nem percorre `.venv`, `.git`, AppData e caches comuns. A listagem mostra até 100 itens. Busca/listagem/abertura não leem conteúdo para a OpenAI. Leitura autorizada suporta TXT, MD, CSV, JSON e LOG UTF-8, e PDF com texto: até 10 MB, 20 páginas e 8.000 caracteres enviados. Não há OCR nem leitura de PDFs protegidos por senha. O conteúdo pode gerar cobrança na API; é enviado só depois de autorização daquele arquivo, não fica no histórico local de ações e não pode acionar ferramentas posteriores no mesmo pedido.
+
+### Confirmações, suspensão e cancelamento
+
+Sobrescrita, exclusão e envio de conteúdo exibem **ação e alvo exatos** em uma janela de confirmação. Ela não bloqueia os controles de áudio. Confirme pelo botão ou diga **“confirmar”**; para recusar diga **“cancelar”**. Nas escolhas ambíguas, selecione a opção ou diga seu número. Há prazo de **30 segundos** e um identificador diferente por pedido; confirmação expirada ou referente a outro pedido não autoriza uma ação. A confirmação por voz usa o mesmo capturador local, sem transmitir áudio à OpenAI. Se o microfone estiver desabilitado, ocupado com áudio ou indisponível, use o botão. O modo `--texto` também aceita confirmação digitada com prazo.
+
+**Cancelar ação** interrompe etapas futuras, inclusive uma autorização OAuth, sem desativar o microfone ou prometer desfazer alterações concluídas. Requisições em voo terminam conforme seus limites de tempo; não são reenviadas automaticamente. **Suspender controle do PC** cancela a ação atual e bloqueia ferramentas locais; conversa e “bom dia Jarvis” continuam disponíveis. Desativar uma categoria também cancela a ação em andamento. **Parar** mantém o comportamento anterior, inclusive desativar o microfone. Os controles diretos anteriores de MP3 e voz continuam independentes do painel de permissões de ferramentas.
+
+O campo **Ações do PC** informa ferramenta, andamento e resultado. `verificado` exige resultado observado; `solicitado` significa que o aplicativo aceitou o pedido, mas a janela/reprodução não foi confirmada. `negado`/`falha` explicam limitações. Não trate `solicitado` como sucesso comprovado. O histórico de ações fica em `acoes.local.jsonl`, limitado às últimas 500 entradas: hora, ferramenta, categoria e status, sem argumentos, caminhos, conteúdo de arquivos ou credenciais. Arquivos locais de configuração/credenciais/auditoria do Jarvis não podem ser alterados pelas ferramentas do modelo.
+
+### Configurar Spotify no seu PC
+
+A busca e reprodução por nome usam **Spotify Web API**, com OAuth Authorization Code + **PKCE**, sem senha e sem Client Secret. Tokens de acesso/renovação ficam no **Gerenciador de Credenciais do Windows**, via `WinVaultKeyring`, nunca no `.env`, preferências ou histórico. Se o cofre falhar, não há armazenamento alternativo em texto puro.
+
+1. Acesse o [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) e crie/configure seu aplicativo usando Web API. Confira no Dashboard os requisitos vigentes de conta e acesso de usuários em modo de desenvolvimento.
+2. Cadastre **exatamente** este redirect URI nas configurações do aplicativo:
+
+   ```text
+   http://127.0.0.1:8787/callback
+   ```
+
+   O callback escuta somente no próprio PC. Feche outro Jarvis usando a porta 8787. Não troque por `localhost` ou por um endereço público.
+3. Abra o `.env` **existente**, preservando sua chave OpenAI, e acrescente o Client ID mostrado no Dashboard (é identificador público):
+
+   ```dotenv
+   SPOTIFY_CLIENT_ID=seu_client_id
+   SPOTIFY_DEVICE_ID=
+   ```
+
+   Deixe `SPOTIFY_DEVICE_ID` vazio inicialmente. Não preencha Client Secret nem senha. Reinicie o Jarvis.
+4. Abra o aplicativo oficial Spotify no PC e reproduza algo manualmente para disponibilizar o dispositivo. Clique **Conectar Spotify** no Jarvis e autorize no navegador. Os escopos são somente `user-read-playback-state` e `user-modify-playback-state`. O Jarvis confere a resposta e a consulta de dispositivos antes de confirmar a conexão.
+5. Diga **“Jarvis, toque [música] de [artista] no Spotify”**. Resultados múltiplos abrem escolha com faixa/artista/álbum. Por padrão, só computadores são candidatos; mais de um computador exige escolha. `SPOTIFY_DEVICE_ID` permite definir explicitamente outro dispositivo, se desejado. Os botões também permitem pausar, retomar, avançar, voltar, consultar a faixa e ajustar o volume do Spotify.
+
+Os endpoints de controle da Web API exigem condições de conta, permissões e dispositivo compatíveis, normalmente incluindo **Premium**. Regras de novos aplicativos, usuários autorizados e acesso podem mudar: confira as páginas oficiais e o Dashboard antes de depender da integração. Erros 401/403/404 explicam essas possibilidades; 429 pede aguardar. O código não contorna restrições. HTTP 204 confirma apenas que o pedido foi recebido: o Jarvis consulta novamente faixa, dispositivo e estado/volume antes de anunciar uma ação verificada. Próxima/anterior para a mesma faixa podem ficar sem confirmação observável; o Jarvis informa isso.
+
+Se a Web API não estiver configurada ou negar suporte, controles viáveis de **pausar/retomar/próxima/anterior/faixa atual** tentam as sessões oficiais de mídia do Windows (`GlobalSystemMediaTransportControls`). O Spotify deve estar aberto e expor a sessão. Esse caminho não pesquisa nem escolhe faixas por nome; volume específico do Spotify continua exigindo a Web API. Timeout de uma ação não dispara fallback, para evitar aplicá-la duas vezes. **Desconectar** apaga os tokens locais; para revogar o acesso no serviço, remova o aplicativo na sua conta Spotify.
+
+A música **MP3 da saudação** e a reprodução **Spotify** têm controles separados. “Pause a música” resolve a fonte ativa; duas fontes exigem escolha. “Volume geral” altera o Windows; “volume do MP3” e “volume do Spotify” são específicos. **Parar todos os áudios** continua encerrando apenas MP3 e fala do Jarvis; para mídia externa use **Pausar** no painel Spotify.
+
+Por padrão, Spotify/mídia externa iniciada pelo Jarvis pausa o microfone até haver confirmação de parada/pausa, evitando reconhecer a própria música. Use os botões ou texto para pausar e retomar a escuta. O monitor de sessões roda separadamente dos controles do MP3, e estado desconhecido mantém a captura pausada. Se ouvir com **fones**, habilite **Uso fones: permitir escuta durante mídia externa** em Permissões do PC para dar comandos durante o Spotify. Não habilite com música saindo perto do microfone. A fala e o MP3 do Jarvis sempre pausam a captura, mesmo com essa opção. Fechar o Jarvis libera seus dispositivos e o callback; o aplicativo externo Spotify permanece independente.
+
+Documentação oficial: [PKCE](https://developer.spotify.com/documentation/web-api/tutorials/code-pkce-flow), [escopos](https://developer.spotify.com/documentation/web-api/concepts/scopes), [iniciar reprodução](https://developer.spotify.com/documentation/web-api/reference/start-a-users-playback), [dispositivos](https://developer.spotify.com/documentation/web-api/reference/get-a-users-available-devices), [modo de desenvolvimento](https://developer.spotify.com/documentation/web-api/concepts/quota-modes) e [exemplo oficial PKCE no GitHub](https://github.com/spotify/web-api-examples/tree/master/authorization/authorization_code_pkce). O exemplo oficial foi consultado nesta implementação. As páginas `developer.spotify.com` foram bloqueadas pelo proxy deste ambiente; **os requisitos atuais de conta não puderam ser conferidos diretamente aqui**, e OAuth/reprodução real devem ser validados com sua conta no PC. Não foram usados tokens reais nos testes.
+
+### Validar a expansão no Windows
+
+1. Comece por texto com voz e música desligadas. Busque um arquivo temporário, confira escolhas de nomes parecidos e abra Downloads, navegador e Spotify. Compare cada resultado com a janela real, inclusive foco negado.
+2. Autorize uma pasta de testes. Crie, copie, mova e renomeie arquivos nela; confirme conteúdos e destinos. Faça uma sobrescrita: cancele, deixe expirar e depois confirme um novo pedido. Verifique que só o pedido confirmado altera o arquivo.
+3. Exclua um arquivo temporário confirmado e confira a Lixeira. Peça resumo de um TXT/PDF: recuse primeiro e depois autorize; confira arquivo, texto extraído e aviso de truncamento. Não use documentos pessoais para o primeiro teste.
+4. Desative cada categoria e suspenda o controle do PC: tarefas devem ser recusadas e a saudação deve continuar. Cancele durante busca/consulta e verifique que etapas futuras não ocorrem.
+5. Conecte sua conta Spotify, faça uma busca com artista, escolha resultados e dispositivos. Confira título e estado real após play/pause/next/previous e o volume no Spotify. Teste o fallback local sem API; confirme que busca por nome explica a limitação.
+6. Com Spotify e MP3 ativos, peça pausa pelo texto e confira a escolha de fonte. Teste comandos por voz com fones. Sem fones, a escuta deve ficar pausada durante reprodução externa; pause pelo painel e confirme a retomada. Teste erros e feche o aplicativo durante uma operação.
+
+**105 testes passaram** no Linux, além de `pip check`. Arquivos temporários foram realmente criados/copiados/movidos/renomeados, com verificação de conteúdo, limites, ambiguidades e consentimento antes de leitura. A Lixeira do Windows foi **simulada**, sem exclusão de dados pessoais. Os testes Qt usam widgets reais offscreen e verificam confirmação não modal, cancelamento, suspensão preservando saudação e encerramento dos workers. SDK Responses/Spotify usam HTTP simulado: parâmetros, escopos, renovação, dispositivo, 204 sem sucesso automático, falhas e bloqueio de ferramentas após conteúdo de arquivo. A leitura de texto PDF também foi exercitada com pypdf real em um documento gerado para o teste. O callback OAuth loopback foi exercitado em servidor HTTP local real, com `state` inválido rejeitado e PKCE S256 conferido, **sem autenticação real no Spotify**. Os pacotes Windows/Python 3.11 x64 foram baixados e suas interfaces inspecionadas; não foram executados como APIs nativas aqui.
+
+Ainda dependem do seu PC: Known Folders/OneDrive, abertura/foco de janelas, Lixeira real, Core Audio, sessões de mídia Windows, cofre de credenciais, consentimento real Spotify, restrições da conta/dispositivo, microfone, reconhecimento e som físico. Não havia chave OpenAI nem conta Spotify conectada neste ambiente.
+
+Os módulos novos estão em `jarvis/ferramentas/`: `esquemas.py`, `controle.py`, `arquivos.py`, `aplicativos.py`, `windows.py`, `spotify.py` e `base.py`. Os painéis locais estão em `jarvis/interface_pc.py`. O modo de teste por texto continua disponível:
+
+```powershell
+.\.venv\Scripts\python.exe main.py --texto --sem-voz --sem-musica
+```

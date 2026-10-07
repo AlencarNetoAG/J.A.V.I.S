@@ -9,3 +9,5 @@ assets/*.mp3
 !.env.example
 config.local.json
 .venv-python*/
+aplicativos.local.json
+acoes.local.jsonl
