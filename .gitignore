@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.py[cod]
+modelos/
+.pytest_cache/
+assets/*.mp3
