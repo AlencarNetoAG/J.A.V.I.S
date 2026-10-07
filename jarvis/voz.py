@@ -59,3 +59,27 @@ class Voz:
                 self.engine.stop()
             except Exception:
                 pass
+
+    def falar_cancelavel(self, texto, cancelar):
+        from .cancelamento import verificar
+        iniciou = False
+        try:
+            verificar(cancelar)
+            self.engine.say(texto)
+            self.engine.startLoop(False)
+            iniciou = True
+            while True:
+                verificar(cancelar)
+                self.engine.iterate()
+                if not self.engine.isBusy():
+                    break
+                cancelar.wait(0.01)
+        except Exception as erro:
+            from .cancelamento import Cancelado
+            if isinstance(erro, Cancelado):
+                raise
+            raise ErroVoz("Falha na síntese local. Confira voz e saída de áudio.") from erro
+        finally:
+            self.engine.stop()
+            if iniciou:
+                self.engine.endLoop()

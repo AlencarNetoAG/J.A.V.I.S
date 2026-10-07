@@ -1,6 +1,15 @@
 # Jarvis para Windows
 
-Assistente simples em Python: enquanto estiver aberto, ouve **“bom dia Jarvis”** e inicia seu MP3 local de “Highway to Hell”, do AC/DC. Consulta dólar e clima de Salgueiro-PE em paralelo e informa por voz o horário de Recife, a temperatura, a condição do tempo e a cotação. Depois reduz a música gradualmente até parar. Só esse comando está implementado. Encerre com **Ctrl+C**.
+![Painel desktop do Jarvis, renderizado em teste Qt offscreen](assets/painel.png)
+
+Aplicação desktop em Python/PySide6 com painel escuro, anéis animados, relógio de Salgueiro, cartões de clima/dólar e histórico de conversa. O reconhecimento Whisper é local. A API da OpenAI recebe texto somente após uma pergunta aceita.
+
+- **“Jarvis, explique uma função de segundo grau”**: pergunta na mesma frase.
+- **“Jarvis”**: responde “Sim, senhor?” e espera a pergunta. O prazo e a duração máxima da captura são configuráveis.
+- **“bom dia Jarvis”**: tem prioridade depois de concluir a frase; música local, clima, horário de Recife e dólar. Funciona **sem chave da OpenAI**.
+- Perguntas por texto funcionam no painel e no terminal. “Limpar conversa” remove o contexto local desta sessão; não apaga dados do serviço externo.
+
+A música toca apenas na saudação. O reconhecimento permanece pausado enquanto o próprio Jarvis fala ou toca música. O botão **Parar** desativa o microfone, interrompe áudios e descarta resultados cancelados. Uma chamada de rede ou inferência já em andamento pode terminar até seu timeout; não aparecerá como resposta depois do cancelamento.
 
 ## 1. Preparar o Python
 
@@ -16,9 +25,51 @@ py -3.11 -m venv .venv
 
 Os comandos usam diretamente o Python do ambiente virtual. Não é necessário ativá-lo nem alterar a política de execução do PowerShell. Internet é necessária para instalar dependências e baixar o modelo; depois, reconhecimento e síntese funcionam localmente.
 
-Se já tem o ambiente da versão anterior, **não recrie a pasta `.venv`**. Execute apenas o comando de instalação com `-r requirements.txt` para incluir `pygame` (música) e `tzdata` (fusos IANA no Windows).
+Se já tem o ambiente da versão anterior, **não recrie a pasta `.venv`**. Execute apenas o comando de instalação com `-r requirements.txt` para incluir as novas dependências, incluindo PySide6, SDK OpenAI e python-dotenv. Use Python **3.11 x64**, como na versão que já funcionou; Python 3.14 não é suportado por estas versões de dependências.
 
-## 2. Testar primeiro sem microfone
+## 2. Abrir o painel
+
+Depois de instalar, dê dois cliques em **`iniciar_jarvis.bat`**, ou execute na pasta do projeto:
+
+```powershell
+.\.venv\Scripts\python.exe main.py
+```
+
+O microfone começa **desativado**. Digite `bom dia Jarvis` e clique em **Enviar** para testar a saudação. A janela não carrega o modelo de reconhecimento até você clicar **Ativar microfone**. Os cartões mostram “Ainda não consultado”, “Consultando” ou “Indisponível”, sem números fictícios. O histórico mostra pergunta e resposta; o medidor usa a energia captada de verdade no microfone, e fica zerado durante a reprodução local. Ele não mede amplitude dos alto-falantes.
+
+**Configurações** permite listar/selecionar microfone e voz instalados, velocidade, música, volume, modelo Whisper, limiar, duração máxima, espera pela pergunta e reduzir movimento. A enumeração dos dispositivos roda fora da thread da interface. As preferências ficam em `config.local.json` (ignorado no Git), sem chave da API. Ao aplicar configurações, o microfone fica desligado; ative-o de novo quando desejar.
+
+As animações são leves e podem ser desligadas com **Reduzir movimento**. O campo de texto e os botões ficam fixos no rodapé; o painel superior tem rolagem quando a janela é pequena. Durante uma consulta, Enviar é bloqueado para evitar operações simultâneas; Parar e Limpar permanecem disponíveis. A palavra de ativação é verificada como palavra inteira; `jarvisinho` não ativa. Aguarde três segundos depois de uma sequência por voz para evitar duplicatas.
+
+## Conversa com a OpenAI: configurar localmente
+
+A assinatura do **ChatGPT não inclui automaticamente créditos da API**. Você precisa de uma conta/chave de API e cobrança/saldo disponíveis na [plataforma OpenAI](https://platform.openai.com/). Confira os [preços da API](https://openai.com/api/pricing/), habilite limites adequados e não compartilhe a chave.
+
+Na pasta do projeto, crie seu `.env` a partir do exemplo:
+
+```powershell
+Copy-Item .env.example .env
+notepad .env
+```
+
+Faça essa cópia uma vez; se `.env` já existir, abra-o sem sobrescrever. Preencha **somente no seu PC**:
+
+```dotenv
+OPENAI_API_KEY=sua_chave_local
+OPENAI_MODEL=gpt-4.1-mini
+```
+
+O exemplo acima é um marcador, não uma chave funcional. Salve como `.env` (não `.env.txt`) e reinicie o Jarvis. O programa também aceita variáveis já configuradas no processo, que têm prioridade sobre `.env`. A chave não aparece no painel ou nas preferências e os erros da API são resumidos sem detalhes sensíveis. **Nunca envie sua chave pelo chat, publique `.env` ou inclua-o em um ZIP.** `.env` e arquivos similares estão ignorados no Git.
+
+Escolhemos `gpt-4.1-mini`, um modelo geral com suporte a ferramentas, com bom equilíbrio entre custo e respostas curtas; o identificador consta nos tipos oficiais do SDK. A disponibilidade para sua conta precisa ser confirmada por uma chamada real. Troque `OPENAI_MODEL` se necessário. Usamos o [SDK oficial](https://github.com/openai/openai-python) e a [Responses API](https://developers.openai.com/api/reference/resources/responses), sem reaproveitar automaticamente conversas/memória de sua conta ChatGPT.
+
+O histórico enviado fica limitado aos **seis últimos pares** de pergunta/resposta; perguntas são limitadas a 4.000 caracteres e cada chamada a **400 tokens de saída**. Não há reenvio automático em erros (`max_retries=0`); timeout de SDK de 20 segundos. Uma resposta com ferramentas pode precisar de até três chamadas, com cobrança de entrada/saída em cada etapa. Dados da rotina bom dia usam as APIs públicas e não consomem OpenAI.
+
+As únicas ferramentas permitidas à OpenAI são clima atual de Salgueiro e cotação de compra USD/BRL, reutilizando validações/fontes deste projeto. Elas são consultadas quando o modelo solicita esses dados. Não há busca geral na web nem execução de comandos de terminal. Para outros assuntos que exijam atualização, o assistente recebe instrução para admitir falta de fonte atual. Resultados meteorológicos antigos são rejeitados; datas da cotação são fornecidas com o resultado. O modelo pode cometer erros: fontes e timestamps da saudação estão nos cartões.
+
+`store=False` desativa o armazenamento de respostas para recuperação via API; não significa ausência de retenção no provedor. Consulte as [políticas de dados da API](https://platform.openai.com/docs/guides/your-data). Perguntas/transcrições e histórico limitado são enviados à OpenAI; o áudio ambiente **não é enviado**, não é gravado em disco e não existe transcrição externa nesta versão. Sem chave, o painel, reconhecimento e a saudação continuam disponíveis; perguntas gerais mostram aviso de configuração.
+
+## Testar primeiro sem microfone
 
 Instale uma voz **Português (Brasil)** nas configurações de idioma/fala do Windows. No Windows 11, procure **Configurações → Hora e idioma → Fala → Gerenciar vozes → Adicionar vozes**. Os nomes dos menus variam conforme a versão. O projeto usa as vozes locais **SAPI5**, acessíveis ao Python; algumas vozes “naturais” exclusivas de outros aplicativos podem não aparecer. Reinicie o Jarvis depois da instalação.
 
@@ -64,7 +115,7 @@ Para executar sem música, use `--sem-musica`. **`--sem-voz` desativa somente a 
 
 Usamos **Whisper multilíngue**, executado no próprio PC pelo [faster-whisper](https://github.com/SYSTRAN/faster-whisper), sem enviar áudio a um serviço externo. O modelo padrão é `tiny`, com pesos de aproximadamente 75 MB, disponível em [Systran/faster-whisper-tiny](https://huggingface.co/Systran/faster-whisper-tiny). Reserve algumas centenas de MB para modelo e dependências e, de preferência, ao menos 4 GB de RAM no PC. Não precisa de placa de vídeo: usamos CPU e cálculo `int8`.
 
-O primeiro uso com microfone baixa o modelo automaticamente para `modelos/`. Aguarde “Reconhecimento local pronto”; a velocidade depende da internet. Depois os arquivos são reutilizados. Se quiser preparar o modelo antes, sem abrir o microfone, execute **na pasta do projeto**:
+O primeiro uso com microfone baixa o modelo automaticamente para `modelos/`. Aguarde o estado “Aguardando Jarvis”; a velocidade depende da internet. Depois os arquivos são reutilizados. Se quiser preparar o modelo antes, sem abrir o microfone, execute **na pasta do projeto**:
 
 ```powershell
 .\.venv\Scripts\python.exe -c "from faster_whisper import WhisperModel; WhisperModel('tiny', device='cpu', compute_type='int8', cpu_threads=2, download_root='modelos'); print('Modelo pronto.')"
@@ -80,19 +131,11 @@ Fale com clareza, em ambiente silencioso, e faça uma pausa de cerca de um segun
 .\.venv\Scripts\python.exe main.py
 ```
 
-O terminal mostrará (há também uma mensagem de carregamento do modelo):
+Na janela, clique **Ativar microfone**. Aguarde o carregamento local e o estado **Aguardando “Jarvis”**. Você pode dizer “Jarvis, explique uma função”, apenas “Jarvis” para ouvir “Sim, senhor?”, ou “bom dia Jarvis” para a saudação prioritária.
 
-```text
-Jarvis iniciado.
-Aguardando: bom dia Jarvis.
-Comando reconhecido.
-Consultando cotação…
-Consultando condições atuais de Salgueiro, Pernambuco…
-```
+Diga **“bom dia Jarvis”**. Espere a resposta terminar e pelo menos três segundos antes de uma nova ativação. Maiúsculas, espaços, acentos e pontuação são normalizados. Só frases completas transcritas acionam a consulta. A captura usa blocos curtos, detecta volume e encerra a frase após um segundo de silêncio ou a duração máxima configurada (padrão: 12 segundos de áudio). Um filtro local de atividade de voz também ajuda a descartar silêncio.
 
-Diga **“bom dia Jarvis”**. Espere a resposta terminar e pelo menos três segundos antes de uma nova ativação. Maiúsculas, espaços, acentos e pontuação são normalizados. Só frases completas transcritas acionam a consulta. A captura usa blocos curtos, detecta volume e encerra a frase após um segundo de silêncio ou oito segundos de áudio. Um filtro local de atividade de voz também ajuda a descartar silêncio.
-
-O microfone é fechado antes da transcrição e permanece fechado durante **toda** a sequência: música, consultas, fala e redução final do volume. Só é reaberto após todos os áudios terminarem. O áudio anterior é descartado. Há uma janela de três segundos após a sequência para evitar ativações duplicadas. O loop executa uma saudação por vez, sem sobrepor músicas ou respostas, e não mantém escuta depois de encerrado.
+O microfone é fechado antes da transcrição e permanece fechado durante **toda** a sequência: música, consultas, fala e redução final do volume. Só é reaberto após todos os áudios terminarem. O áudio anterior é descartado. Há uma janela de três segundos após a sequência para evitar ativações duplicadas. O worker executa uma operação por vez, sem sobrepor músicas ou respostas, e não mantém escuta depois de encerrado. Na janela use Parar; no terminal, Ctrl+C.
 
 Ctrl+C interrompe a fala e a música, incluindo durante a redução do volume. Se houver uma consulta em andamento, os áudios são interrompidos imediatamente, mas o processo pode levar alguns segundos para terminar enquanto a requisição em outra thread atinge seu timeout.
 
@@ -103,7 +146,7 @@ Ctrl+C interrompe a fala e a música, incluindo durante a redução do volume. S
 .\.venv\Scripts\python.exe main.py --modelo base
 ```
 
-A velocidade padrão é 175; aceita de 80 a 300. Listar dispositivos de áudio:
+A velocidade padrão da versão desktop é 150; aceita de 80 a 300. Listar dispositivos de áudio:
 
 ```powershell
 .\.venv\Scripts\python.exe -c "import sounddevice as sd; print(sd.query_devices())"
@@ -175,7 +218,13 @@ O terminal exibe cidade/estado/país confirmados, coordenadas, temperatura, cond
 
 ```text
 main.py                 entrada do programa
-jarvis/app.py           terminal e coordenação
+jarvis/app.py           funções legadas da versão de terminal
+jarvis/interface.py     janela PySide6 e desenho dos anéis
+jarvis/runtime.py       worker serial e sinais para a interface
+jarvis/cliente_openai.py Responses API e ferramentas permitidas
+jarvis/comandos.py      prioridade e ativação por palavra inteira
+jarvis/configuracoes.py preferências locais sem segredos
+jarvis/terminal.py      teste de conversa e saudação por texto
 jarvis/reconhecimento.py reconhecimento local e normalização
 jarvis/cotacao.py        API, validação, data e valor por extenso
 jarvis/clima.py          cidade, condições atuais e tradução WMO
@@ -194,7 +243,7 @@ Rodar os testes automatizados, sem instalar dependência adicional:
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Os testes usam respostas de rede e áudio **simulados**; isso verifica lógica e recuperação de falhas, não qualidade de reconhecimento, alto-falante nem disponibilidade real da API. As dependências diretas estão fixadas, mas este projeto ainda não tem um lockfile de dependências transitivas.
+Os testes usam respostas de rede e áudio **simulados**, e widgets Qt reais com plataforma offscreen; isso verifica lógica e recuperação de falhas, não qualidade de reconhecimento, alto-falante nem disponibilidade real da API. As dependências diretas estão fixadas, mas este projeto ainda não tem um lockfile de dependências transitivas.
 
 ### Validação no ambiente de criação
 
@@ -205,3 +254,10 @@ Também foi gerado um MP3 temporário de silêncio sintético e decodificado/rep
 O download real dos pesos Whisper foi tentado, mas o proxy deste ambiente bloqueou o servidor de arquivos `us.aws.cdn.hf.co` com HTTP 403. Portanto, não foi possível validar o carregamento/inferência do modelo aqui. O primeiro download e a transcrição real precisam ser verificados no seu PC. Os pacotes Python foram instalados aqui e os pacotes para Windows/Python 3.11 foram verificados por download; isso não equivale a executar no Windows. No Linux de criação falta também a biblioteca nativa PortAudio: use `--texto --sem-voz --sem-musica` para testar aqui; no Windows ela vem no pacote `sounddevice`.
 
 No seu PC, coloque o MP3 e execute `--texto` para conferir a fala do Windows, a música simultânea, o volume baixo e a redução gradual. Depois execute o modo normal para conferir a transcrição real de “bom dia Jarvis”, o limiar de volume, a pausa durante toda a sequência e Ctrl+C durante fala/música. Não considere os testes simulados uma validação desses recursos físicos. Nenhum teste utilizou ou baixou a música do AC/DC. Os dados reais consultados aqui devem mudar conforme novas respostas das fontes.
+
+
+### Validação da versão desktop
+
+A janela foi criada, renderizada e inspecionada em Linux com Qt **offscreen**, incluindo controles reais, redimensionamento, seleção de preferências, animação reduzida, limpeza, prevenção de tarefas duplicadas e cancelamento. Os 45 testes automatizados passaram. O transporte da Responses API foi testado com o SDK oficial e **HTTP simulado**: ferramentas, contexto limitado, chave ausente, autenticação, limite, conexão e cancelamento. O README atual do repositório oficial do SDK foi consultado e recomenda Responses; páginas completas da documentação OpenAI foram bloqueadas pela rede deste ambiente.
+
+**Não havia chave configurada**, portanto não foi realizada chamada real à OpenAI. Não há arquivo AC/DC fornecido, logo não foi testada essa faixa. O modelo Whisper ainda exige download no primeiro uso; seu carregamento/transcrição real não foi validado aqui por causa do bloqueio de rede documentado acima. Fala SAPI5 cancelável em thread, seleção de dispositivos e reprodução audível precisam de teste no **seu Windows**. Teste primeiro por texto e depois pelo microfone, inclusive Parar durante a fala e durante a música. Não consideramos simulações uma validação desses dispositivos.

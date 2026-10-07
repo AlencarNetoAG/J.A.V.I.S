@@ -4,6 +4,8 @@ from collections import deque
 from pathlib import Path
 import queue
 import unicodedata
+import time
+from .cancelamento import verificar
 
 
 def normalizar(texto: str) -> str:
@@ -42,7 +44,7 @@ class Ouvinte:
                 "a internet no primeiro uso e --modelo. Use --texto para testar sem microfone."
             ) from erro
 
-    def _capturar_frase(self):
+    def _capturar_frase(self, cancelar=None, timeout=None, maximo=12.0, nivel=None):
         audios = queue.Queue(maxsize=32)
         avisos = queue.Queue(maxsize=1)
 
@@ -61,11 +63,15 @@ class Ouvinte:
         frase = []
         silencios = 0
         ativos = 0
+        inicio_espera = time.monotonic()
         with self.sd.RawInputStream(
             samplerate=self.TAXA, blocksize=self.BLOCO, device=self.dispositivo,
             dtype="int16", channels=1, callback=receber,
         ) as stream:
             while True:
+                verificar(cancelar)
+                if not frase and timeout is not None and time.monotonic() - inicio_espera >= timeout:
+                    return None
                 try:
                     aviso = avisos.get_nowait()
                     print(f"Aviso de áudio: {aviso}. Se persistir, confira o microfone.", flush=True)
@@ -79,6 +85,8 @@ class Ouvinte:
                     continue
                 amostras = self.np.frombuffer(bloco, dtype=self.np.int16).astype(self.np.float32) / 32768.0
                 energia = float(self.np.sqrt(self.np.mean(amostras ** 2)))
+                if nivel is not None:
+                    nivel(min(1.0, energia * 10))
                 falando = energia >= self.limiar
                 if not frase:
                     inicio.append(amostras)
@@ -94,12 +102,23 @@ class Ouvinte:
                     silencios += 1
                 # Um segundo de silêncio encerra a frase; oito segundos limitam
                 # a memória e o custo de transcrição em ambientes ruidosos.
-                if silencios >= 5 or len(frase) >= 40:
+                if silencios >= 5 or len(frase) >= int(maximo * self.TAXA / self.BLOCO):
                     if ativos >= 2:
                         return self.np.concatenate(frase)
                     frase.clear()
                     inicio.clear()
                     ativos = silencios = 0
+
+    def capturar_texto(self, cancelar=None, timeout=None, maximo=12.0, nivel=None):
+        audio = self._capturar_frase(cancelar, timeout, maximo, nivel)
+        verificar(cancelar)
+        if audio is None:
+            return ""
+        segmentos, _ = self.modelo.transcribe(audio, language="pt", beam_size=5,
+                                             vad_filter=True, condition_on_previous_text=False)
+        texto = " ".join(segmento.text for segmento in segmentos)
+        verificar(cancelar)
+        return texto.strip()
 
     def aguardar_ativacao(self) -> None:
         try:
