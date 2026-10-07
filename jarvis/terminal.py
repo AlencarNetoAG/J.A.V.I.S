@@ -27,7 +27,7 @@ def iniciar(config):
                 if not config.sem_voz:
                     try:
                         if voz is None: voz = Voz(config.velocidade,config.voz)
-                        voz.falar_cancelavel("Sim, senhor?",cancel)
+                        voz.falar_cancelavel("Sim, senhor?",cancel,volume=lambda:config.volume_voz)
                     except ErroVoz: print("Voz indisponível. Continue digitando.")
                 continue
             if tipo == "ignorar": pergunta = texto
@@ -42,7 +42,7 @@ def iniciar(config):
                 if not config.sem_voz:
                     if voz is None: voz = Voz(config.velocidade,config.voz)
                     if musica: musica.abaixar_para_fala()
-                    voz.falar_cancelavel(resposta,cancel)
+                    voz.falar_cancelavel(resposta,cancel,volume=lambda:config.volume_voz)
                 if musica: musica.finalizar(cancelar=cancel)
             except (ErroOpenAI,ErroVoz) as erro:
                 print(str(erro))

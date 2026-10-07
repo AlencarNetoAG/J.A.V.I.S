@@ -15,6 +15,7 @@ class Configuracoes:
     voz: str | None = None
     velocidade: int = 150
     volume: float = 0.12
+    volume_voz: float = 1.0
     musica: str = str(RAIZ / "assets" / "highway_to_hell.mp3")
     timeout_pergunta: float = 12.0
     captura_maxima: float = 12.0
@@ -25,6 +26,7 @@ class Configuracoes:
 
     def validar(self):
         if not (80 <= self.velocidade <= 300 and 0 <= self.volume <= 1
+                and 0 <= self.volume_voz <= 1
                 and 3 <= self.timeout_pergunta <= 60 and 3 <= self.captura_maxima <= 30
                 and 0.001 <= self.limiar <= 0.5):
             raise ValueError("Preferências fora dos limites.")

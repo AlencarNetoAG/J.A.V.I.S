@@ -9,7 +9,7 @@ import time
 
 from PySide6.QtCore import QObject, Signal
 
-from .cancelamento import Cancelado, verificar
+from .cancelamento import Cancelado, Eventos, verificar
 from .cliente_openai import Conversa, ErroOpenAI
 from .clima import consultar_clima
 from .comandos import interpretar
@@ -59,6 +59,8 @@ class Runtime(QObject):
     microfone = Signal(bool)
     reconhecido = Signal(str)
     diagnostico = Signal(dict)
+    audio = Signal(dict)
+    falando = Signal(bool)
 
     def __init__(self, config):
         super().__init__()
@@ -71,6 +73,18 @@ class Runtime(QObject):
         self.ativo = False
         self.trabalhando = False
         self.ultima_voz = float("-inf")
+        self.fala_cancelar = threading.Event()
+        self.todos_audio_cancelar = threading.Event()
+        self.captura_interromper = threading.Event()
+        self.retomada_pendente = threading.Event()
+        self.captura_gate = threading.Lock()
+        self.falando_agora = threading.Event()
+        self.audio_inseguro = threading.Event()
+        self.comandos_audio = queue.Queue()
+        self.musica = None
+        self.finalizacao_musica = False
+        self.audio_thread = threading.Thread(target=self._loop_player, name="jarvis-player", daemon=True)
+        self.audio_thread.start()
         self.thread = threading.Thread(target=self._loop, name="jarvis-runtime", daemon=True)
         self.thread.start()
 
@@ -95,7 +109,87 @@ class Runtime(QObject):
             self.cancelar.set()
         self.microfone.emit(self.ativo)
 
+    def controlar_musica(self, acao):
+        if acao not in ("pausar", "retomar", "parar"): return
+        if acao == "retomar":
+            self.retomada_pendente.set()
+            self.captura_interromper.set()
+        self.comandos_audio.put((acao, self.musica, None))
+
+    def interromper_fala(self):
+        if self.falando_agora.is_set(): self.fala_cancelar.set()
+
+    def parar_audios(self):
+        # Preserva as consultas/histórico e a opção de microfone habilitado.
+        self.todos_audio_cancelar.set()
+        self.fala_cancelar.set()
+        self.controlar_musica("parar")
+
+    def preferencia_audio(self, nome, valor):
+        if nome not in ("volume", "volume_voz", "sem_voz"): return
+        self.config = replace(self.config, **{nome: valor}).validar()
+        if nome == "volume": self.comandos_audio.put(("volume", self.musica, valor))
+        if nome == "sem_voz" and valor: self.interromper_fala()
+
+    def _loop_player(self):
+        anterior = None
+        try:
+            while not self.shutdown.is_set():
+                try:
+                    acao, musica, valor = self.comandos_audio.get(timeout=.05)
+                    if acao == "retomar":
+                        try:
+                            # A thread de captura deve fechar o stream antes de unpause.
+                            with self.captura_gate:
+                                if musica and musica is self.musica and not self.todos_audio_cancelar.is_set(): musica.retomar()
+                        finally:
+                            self.retomada_pendente.clear()
+                    elif musica and musica is self.musica:
+                        if acao == "pausar": musica.pausar()
+                        elif acao == "parar": musica.parar()
+                        elif acao == "volume": musica.definir_volume(valor)
+                except queue.Empty: pass
+                except Exception as erro:
+                    logging.getLogger(__name__).warning("Controle do MP3 falhou: %s", type(erro).__name__)
+                    self.emitir(self.mensagem, "Aviso", "Não foi possível alterar a música; reprodução interrompida.")
+                    if self.musica: self.musica.parar()
+                musica = self.musica
+                atual = {"musica": musica.estado_atual() if musica else "parada"}
+                if atual != anterior:
+                    self.emitir(self.audio, atual)
+                    anterior = atual
+        finally:
+            if self.musica: self.musica.fechar()
+
+    def _capturar(self, ouvinte, **opcoes):
+        while True:
+            verificar(self.cancelar)
+            if self.audio_inseguro.is_set():
+                raise ErroMicrofone("Não foi confirmado o fim da fala. Feche e reabra o Jarvis antes de escutar.")
+            if self.musica and self.musica.estado_atual() == "falha":
+                raise ErroMicrofone("Não foi confirmado o fim da música. Feche e reabra o Jarvis antes de escutar.")
+            self.captura_gate.acquire()
+            aberta = True
+            def liberar_captura():
+                nonlocal aberta
+                if aberta:
+                    aberta = False
+                    self.captura_gate.release()
+            try:
+                if not self.retomada_pendente.is_set() and (not self.musica or self.musica.estado_atual() != "tocando"):
+                    self.captura_interromper.clear()
+                    # O stream fecha antes da inferência: retomar não espera o download/modelo.
+                    if self.musica and self.musica.estado_atual() == "falha":
+                        raise ErroMicrofone("Não foi confirmado o fim da música. Reinicie o Jarvis antes de escutar.")
+                    return ouvinte.capturar_texto(Eventos(self.cancelar, self.captura_interromper),
+                        captura_finalizada=liberar_captura, **opcoes)
+            finally:
+                liberar_captura()
+            self.emitir(self.estado, "Microfone pausado · aguardando fim da música")
+            self.cancelar.wait(.05)
+
     def parar(self):
+        self.parar_audios()
         with self.lock:
             self.ativo = False
             self.cancelar.set()
@@ -153,6 +247,13 @@ class Runtime(QObject):
                 if self.limpar_pendente.is_set():
                     conversa.limpar()
                     self.limpar_pendente.clear()
+                if self.finalizacao_musica and self.musica:
+                    if self.musica.estado_atual() == "tocando":
+                        self.emitir(self.estado, "Finalizando música · microfone pausado")
+                        self.musica.finalizar(cancelar=self.shutdown)
+                    if self.musica.estado_atual() == "parada":
+                        self.musica.fechar()
+                        self.finalizacao_musica = False
                 origem, texto = "", ""
                 with self.lock:
                     if not self.fila.empty():
@@ -189,7 +290,7 @@ class Runtime(QObject):
                             if origem == "teste_microfone" and ouvinte.ultimo.get("captura"):
                                 self.emitir(self.diagnostico, {"captura": "Sim · áudio recebido", "reconhecimento": "Em processamento local"})
                         try:
-                            texto = ouvinte.capturar_texto(self.cancelar, maximo=config.captura_maxima,
+                            texto = self._capturar(ouvinte, maximo=config.captura_maxima,
                                 **({"timeout": 8.0} if origem == "teste_microfone" else {}),
                                 nivel=lambda valor: self.emitir(self.nivel, valor),
                                 estado=publicar_estado)
@@ -228,6 +329,8 @@ class Runtime(QObject):
                         if self.cancelar.is_set() or not self.fila.empty():
                             continue
                         self.trabalhando = True
+                        self.fala_cancelar.clear()
+                        self.todos_audio_cancelar.clear()
                     self.emitir(self.ocupado, True)
                     try:
                         if tipo == "aguardar":
@@ -238,7 +341,7 @@ class Runtime(QObject):
                                 # Ativação apenas por texto: a próxima pergunta vem pelo campo.
                                 self.emitir(self.mensagem, "Jarvis", "Sim, senhor? Digite sua pergunta.")
                                 continue
-                            pergunta = ouvinte.capturar_texto(self.cancelar, timeout=config.timeout_pergunta,
+                            pergunta = self._capturar(ouvinte, timeout=config.timeout_pergunta,
                                                              maximo=config.captura_maxima,
                                                              nivel=lambda valor: self.emitir(self.nivel, valor),
                                                              estado=lambda valor: self.emitir(self.estado, valor))
@@ -254,10 +357,13 @@ class Runtime(QObject):
                                 pergunta = interpretar(pergunta)[1]
                         self.emitir(self.mensagem, "Senhor", texto if tipo == "bom_dia" else pergunta)
                         if tipo == "bom_dia":
-                            musica = None if config.sem_musica else Musica(config.musica, config.volume,
+                            if self.musica: self.musica.fechar()
+                            self.finalizacao_musica = False
+                            musica = None if config.sem_musica else Musica(config.musica, self.config.volume,
                                 avisar=lambda aviso: self.emitir(self.mensagem, "Aviso", aviso))
+                            self.musica = musica
                             try:
-                                if musica:
+                                if musica and not self.todos_audio_cancelar.is_set():
                                     musica.iniciar()
                                 self.emitir(self.estado, "Consultando")
                                 resposta = consultar_painel(self.cancelar, lambda dados: self.emitir(self.cartoes, dados))
@@ -270,7 +376,10 @@ class Runtime(QObject):
                                     musica.finalizar(cancelar=self.cancelar)
                             finally:
                                 if musica:
-                                    musica.fechar()
+                                    if getattr(musica, "pausada", False) and not self.cancelar.is_set() and not self.todos_audio_cancelar.is_set():
+                                        self.finalizacao_musica = True
+                                    else:
+                                        musica.fechar()
                         else:
                             self.emitir(self.estado, "Consultando")
                             resposta = conversa.perguntar(pergunta, self.cancelar)
@@ -304,6 +413,7 @@ class Runtime(QObject):
                         self.ativo = False
                         self.emitir(self.microfone, False)
         finally:
+            if self.musica: self.musica.fechar()
             if self.voz:
                 self.voz.fechar()
             conversa.fechar()
@@ -313,20 +423,31 @@ class Runtime(QObject):
     def _falar(self, texto, config):
         verificar(self.cancelar)
         self.emitir(self.nivel, 0.0)
-        self.emitir(self.estado, "Respondendo")
-        if config.sem_voz:
-            return
+        if self.config.sem_voz or self.todos_audio_cancelar.is_set() or self.fala_cancelar.is_set(): return
         try:
             chave = (config.velocidade, config.voz)
             if self.voz_config != chave:
-                if self.voz:
-                    self.voz.fechar()
+                if self.voz: self.voz.fechar()
                 self.voz = Voz(*chave)
                 self.voz_config = chave
-            self.voz.falar_cancelavel(texto, self.cancelar)
-        except ErroVoz:
+            self.falando_agora.set()
+            self.emitir(self.falando, True)
+            self.emitir(self.estado, "Falando · microfone pausado")
+            self.voz.falar_cancelavel(texto, Eventos(self.cancelar, self.fala_cancelar),
+                volume=lambda: self.config.volume_voz)
+        except Cancelado:
+            if self.cancelar.is_set(): raise
+            self.emitir(self.estado, "Fala interrompida · resposta preservada no histórico")
+        except ErroVoz as erro:
             self.voz_config = None
-            self.emitir(self.mensagem, "Aviso", "Voz local indisponível. A resposta está no histórico; confira configurações de fala.")
+            if erro.audio_pendente:
+                self.audio_inseguro.set()
+                self.ativo = False
+                self.emitir(self.microfone, False)
+            self.emitir(self.mensagem, "Aviso", str(erro))
+        finally:
+            self.falando_agora.clear()
+            self.emitir(self.falando, False)
 
     def _dispositivos(self):
         dados = {"microfones": [], "vozes": [], "identidades": {}}

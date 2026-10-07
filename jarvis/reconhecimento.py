@@ -185,8 +185,11 @@ class Ouvinte:
             if nivel: nivel(0.)
             if estado: estado("Captura pausada")
 
-    def capturar_texto(self, cancelar=None, timeout=None, maximo=12., nivel=None, estado=None):
-        audio = self._capturar_frase(cancelar, timeout, maximo, nivel, estado)
+    def capturar_texto(self, cancelar=None, timeout=None, maximo=12., nivel=None, estado=None, captura_finalizada=None):
+        try:
+            audio = self._capturar_frase(cancelar, timeout, maximo, nivel, estado)
+        finally:
+            if captura_finalizada: captura_finalizada()
         verificar(cancelar)
         if audio is None: return ""
         if estado: estado("Reconhecendo localmente · microfone pausado")

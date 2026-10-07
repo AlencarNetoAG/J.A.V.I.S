@@ -284,3 +284,39 @@ Logs ficam no terminal com hora, nome do módulo, dispositivo/taxa/canais, calib
 ```
 
 Validação desta correção: **55 testes passaram**; as dependências passaram em `pip check`, a janela foi renderizada em Qt offscreen e o modo texto foi executado. Testes automatizados usam PCM sintético e backend de microfone simulado, incluindo formato nativo estéreo/48 kHz, reamostragem real PyAV, calibração, silêncio, permissão, perda de blocos, fechamento antes da transcrição, cancelamento, identificação persistente, prioridade dos comandos, teste pela interface e retomada após música/fala/falha de API. Não houve teste de microfone físico, permissões reais do Windows ou transcrição real do Whisper nesta correção. Os passos acima são necessários no seu computador.
+
+
+## Controles independentes de música e voz
+
+Os controles ficam no rodapé da janela e continuam disponíveis durante consultas e respostas. Em janelas estreitas, os painéis e controles do microfone se empilham; o painel superior usa rolagem vertical sem cortar conteúdo horizontalmente. O visual atual mantém o desenho original em Qt; **o vídeo de referência do TikTok não pôde ser visualizado neste ambiente**, portanto este painel não é apresentado como reprodução dele. Para adaptar composição, formas, cores e animações à referência, ainda é necessário fornecer o vídeo ou capturas.
+
+| Controle | Comportamento |
+| --- | --- |
+| **Pausar música / Retomar música** | Alterna conforme o estado real do SDL. Usa `pause`/`unpause`, preservando a posição da faixa, sem `play` ou recarga ao retomar. |
+| **Parar música** | Encerra somente o MP3. A próxima saudação carrega a faixa desde o início. Não interrompe a voz. |
+| **Volume MP3** | Ajusta apenas a música, de 0 a 100%; a redução automática durante a saudação continua protegendo a compreensão da voz. |
+| **Interromper fala** | Purga a fila da fala atual. Mantém o texto no histórico e não cancela o MP3 nem as consultas. Só é habilitado durante a fala. |
+| **Responder por voz** | Desmarcar interrompe uma fala ativa e mantém futuras respostas escritas. Marcar habilita a voz para novas respostas; não relê a anterior. |
+| **Volume da voz** | Independente do MP3. No Windows ajusta o volume do SAPI5 durante a fala pela própria thread de síntese. |
+| **Parar todos os áudios** | Para MP3 e fala, preserva consultas e histórico e impede novos áudios da sequência em andamento. A próxima ativação pode usar áudio novamente. |
+| **Parar** | Continua cancelando a operação e desativando o microfone, como nas versões anteriores. |
+
+Volume do MP3, volume da voz (`volume_voz`) e opção de resposta por voz são salvos em `config.local.json`, sem credenciais. As configurações completas também permitem ajustar os dois volumes. Os sliders afetam o Jarvis, sem alterar o volume geral do Windows.
+
+O MP3 continua sendo um arquivo local fornecido por você, em `assets/highway_to_hell.mp3`, ou o caminho escolhido nas Configurações. Depois da saudação, a música reduz gradualmente até parar. **Se a faixa estiver pausada ao terminar a saudação, sua posição fica preservada; o fade é adiado até você retomar.** Você também pode escolher Parar música para encerrar essa faixa pausada.
+
+A síntese SAPI5 permanece no worker que inicializou o COM. A interrupção usa um evento separado do cancelamento de consultas; a fala verifica esse evento e purga o áudio enfileirado, confirmando o término antes da reabertura do microfone. Se o driver não confirmar o fim da fala, o aplicativo bloqueia a escuta e pede reinicialização. A mudança de volume durante uma fala usa o driver da versão fixa `pyttsx3==2.99`, pois o `engine.setProperty` comum pode enfileirar essa mudança depois da fala; esse caminho ainda requer validação física no Windows.
+
+O player tem uma thread para os controles e operações curtas protegidas por lock, de modo que pausar/parar/ajustar o MP3 não aguarda as consultas. Há apenas um capturador de microfone. Retomar a música interrompe e fecha qualquer captura antes de voltar a tocar; não espera pelo download/inferência do modelo quando o stream já está fechado. Se o player não confirmar stop nem encerramento do mixer, a captura é bloqueada e um aviso pede reinicialização. A escuta pode continuar enquanto o MP3 está pausado, mas fica suspensa durante sua reprodução, durante a fala e durante o fade. Ao parar os áudios, a escuta volta se o microfone continua habilitado e a operação em andamento já terminou. Uma consulta ainda em execução mantém a captura pausada até devolver seu resultado.
+
+Os anéis do painel são desenhados pela aplicação e mudam a velocidade conforme os estados reais: aguardando, ouvindo/calibrando, processando e falando. O medidor continua mostrando **somente o RMS do microfone capturado**, e não uma onda de áudio de saída inventada. Não há vídeo no fundo.
+
+### Validação dos novos controles no seu PC
+
+1. Coloque o MP3 e envie “bom dia Jarvis”. Durante a consulta ou fala, pause e retome: confirme que a faixa continua do mesmo ponto. Se estiver pausada ao final da saudação, retome para verificar o fade adiado.
+2. Durante a resposta, clique **Parar música**: a voz deve continuar. Faça outra saudação e clique **Interromper fala**: o texto deve permanecer, a voz não deve continuar nem tocar trechos pendentes, e o MP3 segue seu fluxo de finalização.
+3. Ajuste cada volume separadamente enquanto os áudios tocam. Desmarque **Responder por voz** e envie outra pergunta: deve aparecer texto sem fala. Marque novamente para habilitar as próximas respostas.
+4. Com o microfone habilitado, teste **Parar todos os áudios** durante a fala e durante a consulta. A consulta deve concluir por texto, sem iniciar nova fala, e a escuta deve retornar depois, sem detectar os áudios do Jarvis. **Parar** continua exigindo ativação manual do microfone depois.
+5. Redimensione a janela e confirme que os controles continuam legíveis. Feche o aplicativo com MP3/fala ativos e verifique que o áudio para e o microfone é liberado.
+
+**67 testes passaram**, assim como `pip check` e a renderização Qt em 1000×760 e 580×420. Testes automatizados cobrem pause/unpause sem recarga, volume independente, fade pausado, limpeza da fila de fala, purga que falha, controles durante consulta, texto preservado, resposta sem voz, retomada da captura e sincronização ao retomar MP3, além dos testes anteriores. Houve também reprodução real de **um MP3 sintético de teste** no SDL com saída `dummy`: posição estável na pausa (116/116 ms), avanço ao retomar (246 ms), volume, stop, reinício e fade. Isso não valida som audível, a faixa AC/DC, SAPI5 do Windows ou seu microfone físico. Esses recursos e o visual do vídeo permanecem sujeitos às validações acima.

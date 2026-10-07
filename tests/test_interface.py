@@ -85,7 +85,7 @@ class InterfaceTests(unittest.TestCase):
                 return "ruído"
         from types import SimpleNamespace
         ouvinte=SimpleNamespace(capturar_texto=capturar)
-        voz=SimpleNamespace(falar_cancelavel=lambda texto,cancel:eventos.append(texto),fechar=lambda:None)
+        voz=SimpleNamespace(falar_cancelavel=lambda texto,cancel,**kwargs:eventos.append(texto),fechar=lambda:None)
         with patch("jarvis.runtime.Ouvinte",return_value=ouvinte),patch("jarvis.runtime.Voz",return_value=voz),patch("jarvis.runtime.Conversa.perguntar",return_value="Resposta de teste") as api:
             w=Janela(Configuracoes(sem_musica=True));w.show()
             try:
@@ -149,13 +149,14 @@ class InterfaceTests(unittest.TestCase):
             cancel.wait(.05);verificar(cancel);return "sem comando"
         def consulta(*args):eventos.append("consulta");return "Bom dia de teste"
         musica=SimpleNamespace(iniciar=lambda:eventos.append("musica"),abaixar_para_fala=lambda:None,
-            finalizar=lambda **kwargs:eventos.append("fade"),fechar=lambda:eventos.append("audio parado"))
-        voz=SimpleNamespace(falar_cancelavel=lambda *args:eventos.append("fala"),fechar=lambda:None)
+            finalizar=lambda **kwargs:eventos.append("fade"),fechar=lambda:eventos.append("audio parado"),
+            estado_atual=lambda:"parada",parar=lambda:None)
+        voz=SimpleNamespace(falar_cancelavel=lambda *args,**kwargs:eventos.append("fala"),fechar=lambda:None)
         with patch("jarvis.runtime.Ouvinte",return_value=SimpleNamespace(capturar_texto=capturar)),patch("jarvis.runtime.Musica",return_value=musica),patch("jarvis.runtime.Voz",return_value=voz),patch("jarvis.runtime.consultar_painel",side_effect=consulta),patch("jarvis.runtime.Conversa.perguntar",side_effect=ErroOpenAI("Serviço indisponível")):
-            w=Janela();w.show()
+            w=Janela(Configuracoes());w.show()
             try:
                 w.mic.click()
-                self.esperar(lambda:etapa["n"]>=3)
+                self.esperar(lambda:etapa["n"]>=3 and "Serviço indisponível" in w.aviso.text())
                 self.assertEqual(eventos[:7],["captura","musica","consulta","fala","fade","audio parado","captura"])
                 self.assertTrue(w.runtime.ativo)
                 self.assertIn("Serviço indisponível",w.aviso.text())

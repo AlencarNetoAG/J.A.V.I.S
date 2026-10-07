@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QTextBrowser, QLineEdit, QProgressBar, QScrollArea,
     QDialog, QFormLayout, QComboBox, QSpinBox, QDoubleSpinBox, QCheckBox,
-    QFileDialog, QDialogButtonBox, QMessageBox,
+    QFileDialog, QDialogButtonBox, QMessageBox, QSlider, QBoxLayout,
 )
 from dataclasses import replace
 
@@ -41,12 +41,17 @@ class Nucleo(QWidget):
         self.setMinimumWidth(180)
         self.fase = 0.0
         self.nivel = 0.0
+        self.modo = "aguardando"
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.avancar)
         self.timer.start(40)
 
     def avancar(self):
-        self.fase = (self.fase + 0.8) % 360
+        self.fase = (self.fase + {"aguardando":.3,"ouvindo":.8,"processando":2.,"falando":1.3}[self.modo]) % 360
+        self.update()
+
+    def estado_operacao(self, modo):
+        self.modo = modo
         self.update()
 
     def movimento(self, reduzir):
@@ -99,6 +104,7 @@ class Preferencias(QDialog):
             self.voz.addItem(config.voz, config.voz)
             self.voz.setCurrentIndex(1)
         self.velocidade = QSpinBox(); self.velocidade.setRange(80, 300); self.velocidade.setValue(config.velocidade)
+        self.volume_voz = QDoubleSpinBox(); self.volume_voz.setRange(0, 1); self.volume_voz.setSingleStep(.05); self.volume_voz.setValue(config.volume_voz)
         self.volume = QDoubleSpinBox(); self.volume.setRange(0, 1); self.volume.setSingleStep(.02); self.volume.setValue(config.volume)
         self.timeout = QSpinBox(); self.timeout.setRange(3, 60); self.timeout.setValue(int(config.timeout_pergunta))
         self.maximo = QSpinBox(); self.maximo.setRange(3, 30); self.maximo.setValue(int(config.captura_maxima))
@@ -111,7 +117,7 @@ class Preferencias(QDialog):
         self.reduzir = QCheckBox("Reduzir movimento"); self.reduzir.setChecked(config.reduzir_movimento)
         self.sem_voz = QCheckBox("Desativar fala"); self.sem_voz.setChecked(config.sem_voz)
         self.sem_musica = QCheckBox("Desativar música"); self.sem_musica.setChecked(config.sem_musica)
-        for nome, widget in (("Microfone",self.mic),("Voz",self.voz),("Velocidade",self.velocidade),("Volume da música",self.volume),("Espera pela pergunta (s)",self.timeout),("Captura máxima (s)",self.maximo),("Limiar do microfone",self.limiar),("Modelo Whisper",self.modelo)):
+        for nome, widget in (("Microfone",self.mic),("Voz",self.voz),("Velocidade",self.velocidade),("Volume da música",self.volume),("Volume da voz",self.volume_voz),("Espera pela pergunta (s)",self.timeout),("Captura máxima (s)",self.maximo),("Limiar do microfone",self.limiar),("Modelo Whisper",self.modelo)):
             form.addRow(nome,widget)
         form.addRow("Música local", caminho)
         layout.addLayout(form)
@@ -151,7 +157,7 @@ class Preferencias(QDialog):
     def resultado(self):
         return replace(self.config, microfone=self.mic.currentData(),
                        microfone_identidade=self.identidades.get(self.mic.currentData(), self.config.microfone_identidade) if self.mic.currentData() is not None else None, voz=self.voz.currentData(),
-                       velocidade=self.velocidade.value(), volume=self.volume.value(),
+                       velocidade=self.velocidade.value(), volume=self.volume.value(), volume_voz=self.volume_voz.value(),
                        timeout_pergunta=self.timeout.value(), captura_maxima=self.maximo.value(),
                        limiar=self.limiar.value(), modelo=self.modelo.text().strip() or "tiny",
                        musica=self.arquivo.text(), reduzir_movimento=self.reduzir.isChecked(),
@@ -171,16 +177,16 @@ class Janela(QMainWindow):
         titulo = QLabel("JARVIS"); titulo.setObjectName("titulo"); layout.addWidget(titulo)
         subtitulo = QLabel("ASSISTENTE PESSOAL  /  RECONHECIMENTO LOCAL  /  SALGUEIRO · PE")
         subtitulo.setObjectName("subtitulo"); subtitulo.setWordWrap(True); layout.addWidget(subtitulo)
-        self.estado = QLabel("Desativado · use texto ou ative o microfone"); layout.addWidget(self.estado)
-        centro = QHBoxLayout()
+        self.estado = QLabel("Desativado · use texto ou ative o microfone"); self.estado.setWordWrap(True); layout.addWidget(self.estado)
+        centro = QHBoxLayout(); self.centro_layout = centro
         self.nucleo = Nucleo(); centro.addWidget(self.nucleo, 1)
         self.relogio = QLabel(); self.relogio.setObjectName("cartao"); self.relogio.setWordWrap(True); centro.addWidget(self.relogio, 1)
         layout.addLayout(centro)
         self.nivel = QProgressBar(); self.nivel.setRange(0,100); self.nivel.setValue(0); self.nivel.setTextVisible(False)
         legenda = QLabel("NÍVEL CAPTADO NO MICROFONE · sem captura durante fala ou música"); legenda.setObjectName("subtitulo"); legenda.setWordWrap(True)
         layout.addWidget(legenda); layout.addWidget(self.nivel)
-        microfones = QHBoxLayout()
-        self.entradas = QComboBox(); self.entradas.addItem("Padrão do Windows (entrada atual)", None)
+        microfones = QHBoxLayout(); self.microfones_layout = microfones
+        self.entradas = QComboBox(); self.entradas.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon); self.entradas.setMinimumContentsLength(20); self.entradas.addItem("Padrão do Windows (entrada atual)", None)
         self.identidades = {}
         self.atualizar_mics = QPushButton("Atualizar microfones")
         self.atualizar_mics.clicked.connect(self.runtime.listar_dispositivos)
@@ -192,7 +198,7 @@ class Janela(QMainWindow):
         self.transcricao.setWordWrap(True); layout.addWidget(self.transcricao)
         self.teste_resultado = QLabel("Teste: fique em silêncio na calibração; depois diga bom dia Jarvis.")
         self.teste_resultado.setWordWrap(True); layout.addWidget(self.teste_resultado)
-        cards = QHBoxLayout()
+        cards = QHBoxLayout(); self.cards_layout = cards
         self.clima = QLabel("CLIMA · SALGUEIRO\nAinda não consultado\nDiga ou digite bom dia Jarvis")
         self.dolar = QLabel("USD / BRL\nAinda não consultado\nCompra · referência de mercado")
         for card in (self.clima, self.dolar):
@@ -217,14 +223,49 @@ class Janela(QMainWindow):
         central = QWidget(); principal = QVBoxLayout(central); principal.setContentsMargins(0,0,0,0)
         principal.addWidget(scroll,1)
         rodape = QWidget(); rodape_layout = QVBoxLayout(rodape); rodape_layout.setContentsMargins(20,0,20,12)
+        self.audio_estado = "parada"
+        self.fala_ativa = False
+        musica_controles = QHBoxLayout()
+        self.pausa_musica = QPushButton("Pausar música"); self.pausa_musica.setEnabled(False)
+        self.pausa_musica.clicked.connect(lambda: self.runtime.controlar_musica("retomar" if self.audio_estado == "pausada" else "pausar"))
+        self.stop_musica = QPushButton("Parar música"); self.stop_musica.setEnabled(False)
+        self.stop_musica.clicked.connect(lambda: self.runtime.controlar_musica("parar"))
+        self.volume_musica = QSlider(Qt.Orientation.Horizontal); self.volume_musica.setRange(0,100); self.volume_musica.setValue(round(self.config.volume*100)); self.volume_musica.setMinimumWidth(50)
+        self.volume_musica.setAccessibleName("Volume da música")
+        self.percentual_musica = QLabel(f"{self.volume_musica.value()}%")
+        musica_controles.addWidget(self.pausa_musica); musica_controles.addWidget(self.stop_musica)
+        musica_controles.addWidget(QLabel("MP3")); musica_controles.addWidget(self.volume_musica,1); musica_controles.addWidget(self.percentual_musica)
+        voz_controles = QHBoxLayout()
+        self.habilitar_voz = QCheckBox("Responder por voz"); self.habilitar_voz.setChecked(not self.config.sem_voz)
+        self.interromper_voz = QPushButton("Interromper fala"); self.interromper_voz.setEnabled(False)
+        self.interromper_voz.clicked.connect(self.runtime.interromper_fala)
+        self.volume_voz = QSlider(Qt.Orientation.Horizontal); self.volume_voz.setRange(0,100); self.volume_voz.setValue(round(self.config.volume_voz*100)); self.volume_voz.setMinimumWidth(50)
+        self.volume_voz.setAccessibleName("Volume da voz")
+        self.percentual_voz = QLabel(f"{self.volume_voz.value()}%")
+        voz_controles.addWidget(self.habilitar_voz); voz_controles.addWidget(self.interromper_voz)
+        voz_controles.addWidget(QLabel("Voz")); voz_controles.addWidget(self.volume_voz,1); voz_controles.addWidget(self.percentual_voz)
+        todos_controles = QHBoxLayout()
+        self.stop_audios = QPushButton("Parar todos os áudios"); self.stop_audios.setObjectName("parar")
+        self.stop_audios.clicked.connect(self.runtime.parar_audios)
+        self.status_audio = QLabel("Música: parada · voz: desativada" if self.config.sem_voz else "Música: parada · voz: pronta")
+        self.status_audio.setWordWrap(True)
+        todos_controles.addWidget(self.stop_audios); todos_controles.addWidget(self.status_audio,1)
+        rodape_layout.addLayout(musica_controles); rodape_layout.addLayout(voz_controles); rodape_layout.addLayout(todos_controles)
         rodape_layout.addLayout(pergunta); rodape_layout.addLayout(botoes)
+        self.salvar_audio_timer = QTimer(self); self.salvar_audio_timer.setSingleShot(True)
+        self.salvar_audio_timer.timeout.connect(self.salvar_audio)
+        self.volume_musica.valueChanged.connect(lambda v:self.alterar_audio("volume",v/100))
+        self.volume_voz.valueChanged.connect(lambda v:self.alterar_audio("volume_voz",v/100))
+        self.habilitar_voz.toggled.connect(lambda ativo:self.alterar_audio("sem_voz",not ativo))
         principal.addWidget(rodape); self.setCentralWidget(central)
         self.entradas.currentIndexChanged.connect(self.selecionar_microfone)
         self.runtime.dispositivos.connect(self.atualizar_microfones)
         self.runtime.reconhecido.connect(lambda texto: self.transcricao.setText("Texto reconhecido: " + (texto or "nenhuma fala reconhecida")))
         self.runtime.diagnostico.connect(self.resultado_microfone)
         QTimer.singleShot(0, self.runtime.listar_dispositivos)
-        self.runtime.estado.connect(self.estado.setText)
+        self.runtime.estado.connect(self.estado_runtime)
+        self.runtime.audio.connect(self.atualizar_audio)
+        self.runtime.falando.connect(self.estado_fala)
         self.runtime.mensagem.connect(self.adicionar)
         self.runtime.ocupado.connect(self.ocupado)
         self.runtime.nivel.connect(self.amplitude)
@@ -233,6 +274,49 @@ class Janela(QMainWindow):
         self.timer = QTimer(self); self.timer.timeout.connect(self.atualizar_relogio); self.timer.start(1000)
         self.atualizar_relogio(); self.nucleo.movimento(self.config.reduzir_movimento)
         self.historico.document().setMaximumBlockCount(120)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if hasattr(self,"cards_layout"):
+            direcao = QBoxLayout.Direction.TopToBottom if self.width()<720 else QBoxLayout.Direction.LeftToRight
+            for layout in (self.centro_layout,self.cards_layout,self.microfones_layout):
+                layout.setDirection(direcao)
+
+    def alterar_audio(self, nome, valor):
+        self.runtime.preferencia_audio(nome, valor)
+        self.config = self.runtime.config
+        self.percentual_musica.setText(f"{self.volume_musica.value()}%")
+        self.percentual_voz.setText(f"{self.volume_voz.value()}%")
+        self.rotulo_audio()
+        self.salvar_audio_timer.start(250)
+
+    def salvar_audio(self):
+        try: salvar(self.config)
+        except (OSError, ValueError): self.aviso.setText("Não foi possível salvar as preferências de áudio.")
+
+    def atualizar_audio(self, dados):
+        self.audio_estado = dados["musica"]
+        self.pausa_musica.setText("Retomar música" if self.audio_estado == "pausada" else "Pausar música")
+        self.pausa_musica.setEnabled(self.audio_estado in ("tocando","pausada"))
+        self.stop_musica.setEnabled(self.audio_estado != "parada")
+        self.rotulo_audio()
+
+    def rotulo_audio(self):
+        voz = "falando" if self.fala_ativa else "desativada" if self.config.sem_voz else "pronta"
+        self.status_audio.setText(f"Música: {self.audio_estado} · voz: {voz}")
+
+    def estado_fala(self, falando):
+        self.fala_ativa = falando
+        self.rotulo_audio()
+        self.interromper_voz.setEnabled(falando)
+        if falando: self.nucleo.estado_operacao("falando")
+
+    def estado_runtime(self, texto):
+        self.estado.setText(texto)
+        t = texto.casefold()
+        modo = ("falando" if t.startswith("falando") else "ouvindo" if "ouvindo" in t or "calibrando" in t
+                else "processando" if any(p in t for p in ("consultando","reconhecendo","carregando","finalizando")) else "aguardando")
+        self.nucleo.estado_operacao(modo)
 
     def atualizar_microfones(self, dados):
         self.identidades = dados.get("identidades", {})
@@ -312,13 +396,24 @@ class Janela(QMainWindow):
             try:
                 self.config = dialog.resultado(); salvar(self.config)
                 self.runtime.configurar(self.config)
+                for widget, valor in ((self.volume_musica,round(self.config.volume*100)),(self.volume_voz,round(self.config.volume_voz*100)),(self.habilitar_voz,not self.config.sem_voz)):
+                    widget.blockSignals(True)
+                    if isinstance(widget,QCheckBox): widget.setChecked(valor)
+                    else: widget.setValue(valor)
+                    widget.blockSignals(False)
+                self.percentual_musica.setText(f"{self.volume_musica.value()}%")
+                self.percentual_voz.setText(f"{self.volume_voz.value()}%")
                 self.nucleo.movimento(self.config.reduzir_movimento)
+                self.rotulo_audio()
                 self.runtime.listar_dispositivos()
             except (ValueError, OSError):
                 QMessageBox.warning(self,"Configurações","Não foi possível salvar as preferências locais.")
         self.runtime.dispositivos.disconnect(dialog.atualizar_dispositivos)
 
     def closeEvent(self, event):
+        if self.salvar_audio_timer.isActive():
+            self.salvar_audio_timer.stop()
+            self.salvar_audio()
         self.runtime.fechar()
         event.accept()
 
@@ -328,4 +423,8 @@ def iniciar(config=None):
     app.setStyleSheet(ESTILO)
     janela = Janela(config)
     janela.show()
-    return app.exec()
+    resultado = app.exec()
+    janela.runtime.fechar()
+    janela.runtime.audio_thread.join(timeout=2)
+    janela.runtime.thread.join(timeout=2)
+    return resultado
