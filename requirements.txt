@@ -1,6 +1,7 @@
 requests==2.32.5
 faster-whisper==1.2.1
 numpy==2.2.6
+av==18.1.0
 sounddevice==0.5.1
 pyttsx3==2.99
 pygame==2.6.1

@@ -260,6 +260,9 @@ class ControlePC:
                             "fonte",
                             "tocando",
                             "audio_nao_executado",
+                            "arquivos",
+                            "titulo",
+                            "artista",
                         )
                     },
                 }

@@ -1,4 +1,4 @@
-"""Teste por texto da mesma saudação e cliente OpenAI, sem microfone."""
+"""Teste por texto da mesma saudação e conversa, sem microfone."""
 
 import threading
 import os

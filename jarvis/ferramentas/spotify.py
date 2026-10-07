@@ -334,6 +334,8 @@ class Spotify:
             fonte="spotify",
             uri=item.get("uri"),
             dispositivo=dado.get("device"),
+            titulo=item.get("name") or "Título indisponível",
+            artista=artistas or "Artista indisponível",
         )
 
     def _dispositivo(self, cancelar):
@@ -422,7 +424,7 @@ class Spotify:
             params={"device_id": device["id"]},
             body={"uris": [faixa["uri"]]},
         )
-        self._verificar(
+        final = self._verificar(
             lambda d: d.get("is_playing") is True
             and (d.get("item") or {}).get("uri") == faixa["uri"]
             and (d.get("device") or {}).get("id") == device["id"],
@@ -432,6 +434,13 @@ class Spotify:
             f"Reprodução Spotify verificada: {rotulos[i]} · {device.get('name','dispositivo escolhido')}.",
             fonte="spotify",
             tocando=True,
+            titulo=(final.get("item") or {}).get("name") or "Título indisponível",
+            artista=", ".join(
+                a.get("name", "")
+                for a in (final.get("item") or {}).get("artists", [])
+                if isinstance(a, dict)
+            )
+            or "Artista indisponível",
         )
 
     def controlar(self, acao, cancelar, percentual=None):
@@ -479,6 +488,13 @@ class Spotify:
             + (f" em {percentual} por cento." if acao == "volume" else "."),
             fonte="spotify",
             tocando=final.get("is_playing") is True,
+            titulo=(final.get("item") or {}).get("name") or "Título indisponível",
+            artista=", ".join(
+                a.get("name", "")
+                for a in (final.get("item") or {}).get("artists", [])
+                if isinstance(a, dict)
+            )
+            or "Artista indisponível",
         )
 
     def fechar(self):

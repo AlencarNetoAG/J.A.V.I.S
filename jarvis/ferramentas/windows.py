@@ -328,6 +328,8 @@ class Windows:
                     f"Mídia local: {antes.title or 'título indisponível'} · {antes.artist or 'artista indisponível'}.",
                     fonte=fonte,
                     tocando="playing" in status,
+                    titulo=antes.title or "Título indisponível",
+                    artista=antes.artist or "Artista indisponível",
                 )
             funcoes = {
                 "pausar": "try_pause_async",
@@ -359,6 +361,8 @@ class Windows:
                         f"Controle local verificado: {acao}. {depois.title or ''} {depois.artist or ''}".strip(),
                         fonte=fonte,
                         tocando="playing" in status,
+                        titulo=depois.title or "Título indisponível",
+                        artista=depois.artist or "Artista indisponível",
                     )
                 await asyncio.sleep(0.1)
             return resultado(

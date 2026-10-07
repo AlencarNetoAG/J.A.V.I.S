@@ -1,8 +1,10 @@
 # Jarvis para Windows
 
-![Painel desktop do Jarvis, renderizado em teste Qt offscreen](assets/painel.png)
+![Janela real do Jarvis, renderizada em Qt offscreen com consultas reais](assets/painel.png)
 
-Aplicação desktop em Python/PySide6 com painel escuro, anéis animados, relógio de Salgueiro, cartões de clima/dólar e histórico de conversa. O reconhecimento Whisper é local. Todos os comandos de arquivos, aplicativos, Google, áudio e Spotify são interpretados localmente, **sem OpenAI, chave ou assinatura**. Conversa livre e explicação de documentos podem usar Ollama no próprio PC, opcionalmente.
+Aplicação desktop em Python/PySide6 com fundo escuro, esfera azul procedural, filamentos, partículas e pequeno núcleo luminoso. As duas imagens fornecidas foram observadas: o contorno orgânico inspira a esfera, e as linhas finas da outra referência inspiram os cartões simplificados. A esfera reage ao áudio capturado e, no Windows, ao PCM da voz enviado ao player. Não há imagem ou vídeo de fundo.
+
+O reconhecimento Whisper é local. Arquivos, aplicativos, Google, áudio e Spotify continuam funcionando **sem OpenAI, chave ou assinatura**. Conversa livre pode usar Ollama no próprio PC ou a integração OpenAI opcional, escolhida explicitamente nas Configurações. O padrão permanece local; a saudação não depende de IA.
 
 - **“Jarvis, pesquise como fazer um currículo”**: abre os resultados do Google no navegador padrão, sem IA.
 - **“Jarvis, abra o Spotify”**: comando local, sem OpenAI.
@@ -37,21 +39,23 @@ Depois de instalar, dê dois cliques em **`iniciar_jarvis.bat`**, ou execute na 
 .\.venv\Scripts\python.exe main.py
 ```
 
-O microfone começa **desativado**. Digite `bom dia Jarvis` e clique em **Enviar** para testar a saudação. O modelo só é carregado após uma frase com energia suficiente ser capturada, inclusive no teste do microfone. Os cartões mostram “Ainda não consultado”, “Consultando” ou “Indisponível”, sem números fictícios. O histórico mostra pergunta e resposta; o medidor usa a energia captada de verdade no microfone, e fica zerado durante a reprodução local. Ele não mede amplitude dos alto-falantes.
+O microfone começa **desativado**. Digite `bom dia Jarvis` e clique em **Enviar** para testar. O relógio usa `America/Recife`. Clima e dólar são consultados em paralelo: cada cartão aparece assim que sua consulta termina, com fonte, atualização e indisponibilidade quando necessário. Os valores da captura acima são apenas um registro daquela consulta, não dados fixos do aplicativo.
 
-**Configurações** permite listar/selecionar microfone e voz instalados, velocidade, música, volume, modelo Whisper, limiar, duração máxima, espera pela pergunta e reduzir movimento. A enumeração dos dispositivos roda fora da thread da interface. As preferências ficam em `config.local.json` (ignorado no Git), sem chave da API. Ao aplicar configurações, o microfone fica desligado; ative-o de novo quando desejar.
+A esfera ocupa o centro; frase reconhecida e resposta atual ficam abaixo. Respostas aceitam Markdown seguro e rolagem. **Histórico da conversa**, no cabeçalho fixo, abre a conversa completa desta sessão, inclusive avisos. **Dispensar resultados** recolhe cartões/resposta sem apagar o histórico. Uma nova consulta mostra seus novos resultados. A busca de arquivos mostra uma lista: clique em um resultado para solicitar a abertura pela camada de permissões existente. O cartão musical usa título/artista do MP3 quando disponíveis; sem tags, mostra o nome do arquivo e informa que o artista não foi fornecido. Spotify exibe os dados retornados pela API/sessão do Windows.
 
-As animações são leves e podem ser desligadas com **Reduzir movimento**. O campo de texto e os botões ficam fixos no rodapé; o painel superior tem rolagem quando a janela é pequena. Durante uma consulta, Enviar é bloqueado para evitar operações simultâneas; Parar e Limpar permanecem disponíveis. A palavra de ativação é verificada como palavra inteira; `jarvisinho` não ativa. Aguarde três segundos depois de uma sequência por voz para evitar duplicatas.
+O botão **Detalhes** abre lista/atualização/teste de microfones, medidor RMS capturado, diagnóstico, permissões do PC, limpeza e controles do Spotify. **Configurações** permite ajustar voz instalada, velocidade, MP3, volumes, Whisper, limiar, duração/espera da pergunta, reduzir movimento e provedor de conversa. A enumeração roda fora da thread da interface. Preferências ficam em `config.local.json`, sem credenciais. Ao aplicar configurações, ative o microfone novamente quando desejar.
+
+A barra inferior mantém texto, microfone, cancelamento e controles de áudio acessíveis durante as consultas. Em janelas menores, a esfera diminui inteira e os cartões passam para baixo, com rolagem vertical. **Reduzir movimento** mantém o núcleo estável, sem expansão/raios/transições; a intensidade ainda reflete o áudio. Minimizar pausa o desenho animado e as transições, sem interromper as consultas. A palavra de ativação é inteira: `jarvisinho` não ativa. Aguarde três segundos depois de uma sequência por voz para evitar duplicatas.
 
 ## Usar sem OpenAI e sem assinatura
 
-Você **não precisa configurar OpenAI nem pagar assinatura** para os comandos do PC. Mesmo que seu `.env` antigo contenha `OPENAI_API_KEY`, a interface e o modo texto não usam essa chave. O módulo `cliente_openai.py` ficou como código legado fora do fluxo do aplicativo; os testes antigos desse módulo também não fazem chamadas reais.
+Você **não precisa configurar OpenAI nem pagar assinatura** para os comandos do PC. Em **Configurações → Conversa livre**, mantenha **Local / Ollama (padrão)**. Uma chave antiga no `.env` não ativa a OpenAI automaticamente. A mesma preferência vale para o modo texto.
 
 Exemplos locais: “Jarvis, abra o Google”, “Jarvis, pesquise notícias de Salgueiro”, “Jarvis, encontre o arquivo relatório”, “Jarvis, abra este PDF”, “Jarvis, abra o Spotify” e “Jarvis, coloque o volume em cinquenta por cento”. Digite “ajuda” para ver exemplos. Horário, “qual a cotação do dólar?” e “como está o clima em Salgueiro?” também consultam suas fontes sem IA. O reconhecimento continua local e pede a palavra Jarvis para comandos falados; o campo de texto aceita com ou sem essa palavra. “Bom dia Jarvis” mantém prioridade.
 
 A pesquisa abre uma página no **navegador padrão**. O termo é enviado ao Google quando o navegador acessa a página; o Jarvis não lê automaticamente resultados, não os resume e não afirma ter verificado seu carregamento. Internet continua necessária para Google, câmbio, clima e serviços do Spotify. Os comandos de arquivos/aplicativos e o resumo básico funcionam sem um modelo de IA. Não existe envio contínuo de áudio nem de comandos à OpenAI.
 
-A interpretação usa frases previstas, não uma IA: um pedido por vez, nos formatos da tabela abaixo. Não promete compreender qualquer formulação. Se um comando não for identificado, não executa shell nem encaminha à OpenAI. Converse no modelo local opcional ou reformule seguindo um exemplo. Excluir/sobrescrever e ler documentos continuam exigindo consentimento específico.
+A interpretação usa frases previstas, não uma IA: um pedido por vez, nos formatos da tabela abaixo. Não promete compreender qualquer formulação. No modo local, se um comando não for identificado, não executa shell nem encaminha à OpenAI. Converse no modelo local opcional ou reformule seguindo um exemplo. Excluir/sobrescrever e ler documentos continuam exigindo consentimento específico.
 
 ### IA local opcional para conversa e explicação
 
@@ -74,6 +78,16 @@ O resumo básico seleciona frases do documento usando palavras frequentes. É um
 4. Mantenha Ollama aberto e reinicie o Jarvis. Teste “Jarvis, explique o que é Python”. Se Ollama não iniciar automaticamente, use `ollama serve` em outro terminal; se a porta já estiver ocupada pelo Ollama, não abra outro servidor.
 
 O cliente usa somente `http://127.0.0.1:11434/api/chat`, sem redirecionamentos ou fallback externo, com timeout de conexão de 3 s e leitura de 60 s. O modelo recebe texto e até seis pares de conversa, sem áudio. Conteúdo de documento só é lido depois da sua confirmação e não fica no contexto das perguntas posteriores. Saídas do modelo são texto: **não têm autoridade para executar ferramentas**. Não há necessidade de Ollama para pesquisar Google ou controlar o PC. O README oficial do Ollama foi consultado; o modelo não foi baixado/executado neste ambiente e sua qualidade/velocidade devem ser validadas no seu computador.
+
+### OpenAI opcional, preservada
+
+Se quiser voltar à integração de conversa com OpenAI:
+
+1. No `.env` **local** existente, preserve as outras configurações e acrescente `OPENAI_API_KEY=sua_chave` e, opcionalmente, `OPENAI_MODEL=gpt-4.1-mini`. Nunca publique esse arquivo nem compartilhe a chave em mensagens.
+2. Reinicie o Jarvis. Em **Configurações → Conversa livre**, escolha **OpenAI (opcional)** e salve.
+3. Teste uma pergunta geral por texto. A API precisa de internet e saldo/cobrança próprios; assinatura ChatGPT não é crédito de API. Erros de chave, saldo ou conexão aparecem no painel.
+
+Com essa escolha, perguntas gerais e até seis pares de contexto textual podem ser enviados à OpenAI. A ativação Whisper e os comandos locais conhecidos continuam no PC; a saudação usa suas APIs de clima/câmbio diretamente. Documentos são resumidos localmente ou explicados pelo Ollama mediante consentimento, sem enviar seu conteúdo à OpenAI. **Local / Ollama** nunca tenta OpenAI como alternativa automática. Não é preciso ativar esta opção para usar o restante do Jarvis.
 
 ## Testar primeiro sem microfone
 
@@ -225,11 +239,13 @@ O terminal exibe cidade/estado/país confirmados, coordenadas, temperatura, cond
 ```text
 main.py                 entrada do programa
 jarvis/app.py           funções legadas da versão de terminal
-jarvis/interface.py     janela PySide6 e desenho dos anéis
+jarvis/interface.py     janela PySide6, cartões e controles
+jarvis/esfera.py        desenho procedural e envelope de áudio
+jarvis/audio_voz.py     reprodução PCM em memória e amplitude no tempo DAC
 jarvis/runtime.py       worker serial e sinais para a interface
 jarvis/cliente_local.py roteamento local, resumo e Ollama opcional
 jarvis/comandos_locais.py frases previstas e parâmetros
-jarvis/cliente_openai.py código legado, fora do fluxo do aplicativo
+jarvis/cliente_openai.py integração opcional Responses API
 jarvis/comandos.py      prioridade e ativação por palavra inteira
 jarvis/configuracoes.py preferências locais sem segredos
 jarvis/terminal.py      teste de conversa e saudação por texto
@@ -275,7 +291,7 @@ A janela foi criada, renderizada e inspecionada em Linux com Qt **offscreen**, i
 
 Correções feitas sem trocar as bibliotecas de reconhecimento: o código anterior abria sempre mono/16 kHz, sem verificar compatibilidade; persistia somente um índice de dispositivo; usava apenas um limiar fixo e anunciava a escuta antes de abrir o stream. Essas são causas identificadas no código, não um diagnóstico do seu hardware. O código também desativava a escuta após erros da API e podia capturar uma pergunta pelo microfone após uma ativação digitada; esses fluxos foram corrigidos.
 
-1. Abra `iniciar_jarvis.bat`. Na lista **Microfones**, escolha sua entrada, por exemplo o microfone USB, distinguindo a interface MME/WASAPI pelo nome. Clique **Atualizar microfones** após conectar ou remover dispositivos. Se o driver não atualizar a lista, feche e reabra o Jarvis. A seleção é salva em `config.local.json` pelo nome e interface de áudio. Se houver duas entradas indistinguíveis, escolha outra interface ou remova a duplicata. Não há troca automática para outro microfone quando o escolhido desaparece. **Padrão do Windows** é uma escolha explícita e é resolvida como entrada antes de abrir cada captura.
+1. Abra `iniciar_jarvis.bat`. Clique **Detalhes**; na lista de microfones, escolha sua entrada, por exemplo o microfone USB, distinguindo a interface MME/WASAPI pelo nome. Clique **Atualizar microfones** após conectar ou remover dispositivos. Se o driver não atualizar a lista, feche e reabra o Jarvis. A seleção é salva em `config.local.json` pelo nome e interface de áudio. Se houver duas entradas indistinguíveis, escolha outra interface ou remova a duplicata. Não há troca automática para outro microfone quando o escolhido desaparece. **Padrão do Windows** é uma escolha explícita e é resolvida como entrada antes de abrir cada captura.
 2. Clique **Testar microfone**. Fique em silêncio por um segundo na calibração; quando aparecer **Ouvindo**, diga “bom dia Jarvis” e deixe um segundo de silêncio. O teste dá até oito segundos para começar a falar e usa a duração máxima das configurações. Ele não executa a saudação nem chama a OpenAI.
 3. Compare **Captura** e **Reconhecimento**. “Captura: Sim” confirma chegada de PCM, mesmo quando o volume é zero. O indicador e pico RMS mostram a energia desse áudio. “Reconhecimento: Sim” e **Texto reconhecido** mostram a transcrição local. Captura confirmada com reconhecimento ausente pode significar silêncio, voz baixa, ruído ou limiar alto. Captura confirmada com falha do modelo é reportada separadamente. O primeiro modelo precisa de internet.
 4. Se não capturar, em **Configurações do Windows → Privacidade e segurança → Microfone** (Windows 10: **Privacidade → Microfone**), habilite acesso ao dispositivo e aos aplicativos da área de trabalho. Confira em **Sistema → Som → Entrada** se o medidor do próprio Windows responde. Feche programas usando modo exclusivo. Um erro do driver nem sempre permite distinguir permissão, dispositivo ocupado e desconexão; o aviso informa essas possibilidades sem inventar o motivo.
@@ -296,7 +312,7 @@ Validação desta correção: **55 testes passaram**; as dependências passaram 
 
 ## Controles independentes de música e voz
 
-Os controles ficam no rodapé da janela e continuam disponíveis durante consultas e respostas. Em janelas estreitas, os painéis e controles do microfone se empilham; o painel superior usa rolagem vertical sem cortar conteúdo horizontalmente. O visual atual mantém o desenho original em Qt; **o vídeo de referência do TikTok não pôde ser visualizado neste ambiente**, portanto este painel não é apresentado como reprodução dele. Para adaptar composição, formas, cores e animações à referência, ainda é necessário fornecer o vídeo ou capturas.
+Os controles ficam no rodapé e continuam disponíveis durante consultas e respostas. O visual usa as duas imagens anexadas como referência; a composição foi simplificada com azul/ciano, espaço vazio e esfera central. Os controles adicionais e o histórico são recolhíveis. O núcleo não depende do antigo vídeo do TikTok.
 
 | Controle | Comportamento |
 | --- | --- |
@@ -304,8 +320,8 @@ Os controles ficam no rodapé da janela e continuam disponíveis durante consult
 | **Parar música** | Encerra somente o MP3. A próxima saudação carrega a faixa desde o início. Não interrompe a voz. |
 | **Volume MP3** | Ajusta apenas a música, de 0 a 100%; a redução automática durante a saudação continua protegendo a compreensão da voz. |
 | **Interromper fala** | Purga a fila da fala atual. Mantém o texto no histórico e não cancela o MP3 nem as consultas. Só é habilitado durante a fala. |
-| **Responder por voz** | Desmarcar interrompe uma fala ativa e mantém futuras respostas escritas. Marcar habilita a voz para novas respostas; não relê a anterior. |
-| **Volume da voz** | Independente do MP3. No Windows ajusta o volume do SAPI5 durante a fala pela própria thread de síntese. |
+| **Resposta por voz** | Desmarcar interrompe uma fala ativa e mantém futuras respostas escritas. Marcar habilita a voz para novas respostas; não relê a anterior. |
+| **Volume da voz** | Independente do MP3. Ajusta o ganho dos blocos PCM durante a reprodução, independente do MP3. |
 | **Parar todos os áudios** | Para MP3 e fala, preserva consultas e histórico e impede novos áudios da sequência em andamento. A próxima ativação pode usar áudio novamente. |
 | **Parar** | Continua cancelando a operação e desativando o microfone, como nas versões anteriores. |
 
@@ -313,21 +329,23 @@ Volume do MP3, volume da voz (`volume_voz`) e opção de resposta por voz são s
 
 O MP3 continua sendo um arquivo local fornecido por você, em `assets/highway_to_hell.mp3`, ou o caminho escolhido nas Configurações. Depois da saudação, a música reduz gradualmente até parar. **Se a faixa estiver pausada ao terminar a saudação, sua posição fica preservada; o fade é adiado até você retomar.** Você também pode escolher Parar música para encerrar essa faixa pausada.
 
-A síntese SAPI5 permanece no worker que inicializou o COM. A interrupção usa um evento separado do cancelamento de consultas; a fala verifica esse evento e purga o áudio enfileirado, confirmando o término antes da reabertura do microfone. Se o driver não confirmar o fim da fala, o aplicativo bloqueia a escuta e pede reinicialização. A mudança de volume durante uma fala usa o driver da versão fixa `pyttsx3==2.99`, pois o `engine.setProperty` comum pode enfileirar essa mudança depois da fala; esse caminho ainda requer validação física no Windows.
+No painel Windows, SAPI5 sintetiza em **SpMemoryStream**, em memória, usando a voz instalada e a velocidade selecionada. O PCM mono de 22.050 Hz/16 bits é convertido para a taxa/canais aceitos pela saída padrão e reproduzido com `sounddevice`. A amplitude RMS é medida depois do volume da voz, nos blocos enviados ao player, e apresentada conforme o relógio DAC, incluindo a latência de saída. Não usa texto, duração estimada ou aleatoriedade para simular fala. Silêncio/mudo reduz imediatamente a energia; filamentos de repouso continuam discretos. É uma medição do áudio do aplicativo, não do som ambiente nem do volume geral aplicado posteriormente pelo Windows.
+
+A interrupção usa um evento separado da consulta e aborta o stream, descartando blocos pendentes e o restante do PCM. Só depois de confirmar o encerramento o microfone pode retomar; falha de encerramento bloqueia a escuta com aviso. A síntese fica no worker que inicializou COM, sem travar a janela. Não são criados WAVs, MP3s ou gravações de voz. O modo terminal conserva a síntese SAPI5 cancelável anterior, sem esfera.
 
 O player tem uma thread para os controles e operações curtas protegidas por lock, de modo que pausar/parar/ajustar o MP3 não aguarda as consultas. Há apenas um capturador de microfone. Retomar a música interrompe e fecha qualquer captura antes de voltar a tocar; não espera pelo download/inferência do modelo quando o stream já está fechado. Se o player não confirmar stop nem encerramento do mixer, a captura é bloqueada e um aviso pede reinicialização. A escuta pode continuar enquanto o MP3 está pausado, mas fica suspensa durante sua reprodução, durante a fala e durante o fade. Ao parar os áudios, a escuta volta se o microfone continua habilitado e a operação em andamento já terminou. Uma consulta ainda em execução mantém a captura pausada até devolver seu resultado.
 
-Os anéis do painel são desenhados pela aplicação e mudam a velocidade conforme os estados reais: aguardando, ouvindo/calibrando, processando e falando. O medidor continua mostrando **somente o RMS do microfone capturado**, e não uma onda de áudio de saída inventada. Não há vídeo no fundo.
+A esfera tem estados distintos: aguardando (movimento lento), ouvindo/calibrando (RMS real do microfone), processando (circulação suave), preparando voz (sem amplitude inventada), falando (envelope PCM real), microfone desativado (menos intensidade) e erro (indicação breve). O desenho limita-se a 1.140 partículas e filamentos, com timer de aproximadamente 30 quadros/s; ele pausa ao minimizar. O medidor em Detalhes mede apenas o microfone e fica zerado durante a reprodução.
 
 ### Validação dos novos controles no seu PC
 
 1. Coloque o MP3 e envie “bom dia Jarvis”. Durante a consulta ou fala, pause e retome: confirme que a faixa continua do mesmo ponto. Se estiver pausada ao final da saudação, retome para verificar o fade adiado.
 2. Durante a resposta, clique **Parar música**: a voz deve continuar. Faça outra saudação e clique **Interromper fala**: o texto deve permanecer, a voz não deve continuar nem tocar trechos pendentes, e o MP3 segue seu fluxo de finalização.
-3. Ajuste cada volume separadamente enquanto os áudios tocam. Desmarque **Responder por voz** e envie outra pergunta: deve aparecer texto sem fala. Marque novamente para habilitar as próximas respostas.
+3. Ajuste cada volume separadamente enquanto os áudios tocam. Desmarque **Resposta por voz** e envie outra pergunta: deve aparecer texto sem fala. Marque novamente para habilitar as próximas respostas.
 4. Com o microfone habilitado, teste **Parar todos os áudios** durante a fala e durante a consulta. A consulta deve concluir por texto, sem iniciar nova fala, e a escuta deve retornar depois, sem detectar os áudios do Jarvis. **Parar** continua exigindo ativação manual do microfone depois.
 5. Redimensione a janela e confirme que os controles continuam legíveis. Feche o aplicativo com MP3/fala ativos e verifique que o áudio para e o microfone é liberado.
 
-**67 testes passaram**, assim como `pip check` e a renderização Qt em 1000×760 e 580×420. Testes automatizados cobrem pause/unpause sem recarga, volume independente, fade pausado, limpeza da fila de fala, purga que falha, controles durante consulta, texto preservado, resposta sem voz, retomada da captura e sincronização ao retomar MP3, além dos testes anteriores. Houve também reprodução real de **um MP3 sintético de teste** no SDL com saída `dummy`: posição estável na pausa (116/116 ms), avanço ao retomar (246 ms), volume, stop, reinício e fade. Isso não valida som audível, a faixa AC/DC, SAPI5 do Windows ou seu microfone físico. Esses recursos e o visual do vídeo permanecem sujeitos às validações acima.
+A validação anterior dos controles incluiu MP3 sintético com SDL `dummy`: posição preservada na pausa, avanço ao retomar, volume, stop, reinício e fade. A validação desta interface e suas limitações estão ao final do README.
 
 ## Controle do PC por voz e texto
 
@@ -335,7 +353,7 @@ Esta versão acrescenta ferramentas reais de **arquivos, aplicativos, áudio e S
 
 ### Atualizar a instalação existente
 
-Copie os arquivos novos para sua pasta atual, preservando `.venv`, `.env`, `config.local.json`, `aplicativos.local.json` e seu MP3. Depois, na pasta onde está `main.py`, execute uma vez:
+Copie os arquivos novos para sua pasta atual, preservando `.venv`, `.env`, `config.local.json`, `aplicativos.local.json`, `modelos/` e seu MP3. Depois, na pasta onde está `main.py`, execute uma vez:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
@@ -344,7 +362,7 @@ Copie os arquivos novos para sua pasta atual, preservando `.venv`, `.env`, `conf
 
 Abra `iniciar_jarvis.bat`. **Não recrie o ambiente que já funciona com Python 3.11 x64.** As dependências novas incluem pypdf, Send2Trash e, somente no Windows, keyring, pycaw e winsdk. O Windows 10/11 disponibiliza as APIs de mídia utilizadas; alguns aplicativos não expõem todos os controles.
 
-1. Abra **Permissões do PC**. As quatro categorias começam habilitadas; desmarque as que não deseja usar. O acesso inicial a arquivos fica nas pastas pessoais conhecidas do Windows, respeitando OneDrive/redirecionamento. Autorize outras pastas pelo seletor, se necessário.
+1. Clique **Detalhes → Permissões do PC**. As quatro categorias começam habilitadas; desmarque as que não deseja usar. O acesso inicial a arquivos fica nas pastas pessoais conhecidas do Windows, respeitando OneDrive/redirecionamento. Autorize outras pastas pelo seletor, se necessário.
 2. Nesse painel, use **Editar catálogo de aplicativos**. Spotify, navegador padrão e Bloco de Notas já estão cadastrados. Adicione outros programas escolhendo o `.exe` ou `.lnk` instalado, um nome e apelidos. O catálogo fica em `aplicativos.local.json`; caminhos não são escolhidos pelo modelo. Atalhos sem processo identificável podem abrir, mas a confirmação da janela/foco poderá ficar indisponível.
 3. Ative o microfone ou digite no painel: **não configure OpenAI**. Para Spotify por nome, configure apenas Spotify; para conversa/explicação livre, Ollama é opcional. Os comandos do PC já funcionam sem modelo de IA.
 
@@ -397,7 +415,7 @@ A busca e reprodução por nome usam **Spotify Web API**, com OAuth Authorizatio
    ```
 
    Deixe `SPOTIFY_DEVICE_ID` vazio inicialmente. Não preencha Client Secret nem senha. Reinicie o Jarvis.
-4. Abra o aplicativo oficial Spotify no PC e reproduza algo manualmente para disponibilizar o dispositivo. Clique **Conectar Spotify** no Jarvis e autorize no navegador. Os escopos são somente `user-read-playback-state` e `user-modify-playback-state`. O Jarvis confere a resposta e a consulta de dispositivos antes de confirmar a conexão.
+4. Abra o aplicativo oficial Spotify no PC e reproduza algo manualmente para disponibilizar o dispositivo. Clique **Detalhes → Conectar Spotify** no Jarvis e autorize no navegador. Os escopos são somente `user-read-playback-state` e `user-modify-playback-state`. O Jarvis confere a resposta e a consulta de dispositivos antes de confirmar a conexão.
 5. Diga **“Jarvis, toque [música] de [artista] no Spotify”**. Resultados múltiplos abrem escolha com faixa/artista/álbum. Por padrão, só computadores são candidatos; mais de um computador exige escolha. `SPOTIFY_DEVICE_ID` permite definir explicitamente outro dispositivo, se desejado. Os botões também permitem pausar, retomar, avançar, voltar, consultar a faixa e ajustar o volume do Spotify.
 
 Os endpoints de controle da Web API exigem condições de conta, permissões e dispositivo compatíveis, normalmente incluindo **Premium**. Regras de novos aplicativos, usuários autorizados e acesso podem mudar: confira as páginas oficiais e o Dashboard antes de depender da integração. Erros 401/403/404 explicam essas possibilidades; 429 pede aguardar. O código não contorna restrições. HTTP 204 confirma apenas que o pedido foi recebido: o Jarvis consulta novamente faixa, dispositivo e estado/volume antes de anunciar uma ação verificada. Próxima/anterior para a mesma faixa podem ficar sem confirmação observável; o Jarvis informa isso.
@@ -449,6 +467,23 @@ Os módulos novos estão em `jarvis/ferramentas/`: `esquemas.py`, `controle.py`,
 
 Substitua os caminhos pelo seu usuário real. Para caminhos/nomes com espaços ou palavras “para”, prefira digitar usando aspas. Sem pasta, criação usa Documentos; a pasta precisa existir. Destino de cópia/movimentação pode ser uma pasta autorizada (preserva nome) ou um caminho completo com nome novo. `Documentos/notas.txt` e `Downloads/notas.txt` também são aceitos. Criação é literal: o texto depois de “com texto” vira conteúdo, não é executado nem escrito por uma IA.
 
-**Validação da versão local: 123 testes passaram**, e `pip check` passou. Há testes que bloqueiam o cliente OpenAI e chamadas a modelos enquanto exercitam todos os exemplos do anexo, arquivos temporários realmente alterados, URL Google codificada com host HTTPS fixo, limites de volume, permissões/suspensão/cancelamento e consentimento local antes da leitura. A janela Qt foi testada com comando digitado e ativação/pergunta capturadas por microfone simulado, mostrando ação/resultado e retomando a escuta. O contrato HTTP do Ollama foi testado com respostas simuladas, incluindo indisponibilidade sem fallback externo, ausência de ferramentas e conteúdo fora do histórico. Isso não valida o modelo generativo real.
+**Validação da versão local anterior: 123 testes passaram**, e `pip check` passou. Há testes que bloqueiam o cliente OpenAI e chamadas a modelos enquanto exercitam todos os exemplos do anexo, arquivos temporários realmente alterados, URL Google codificada com host HTTPS fixo, limites de volume, permissões/suspensão/cancelamento e consentimento local antes da leitura. A janela Qt foi testada com comando digitado e ativação/pergunta capturadas por microfone simulado, mostrando ação/resultado e retomando a escuta. O contrato HTTP do Ollama foi testado com respostas simuladas, incluindo indisponibilidade sem fallback externo, ausência de ferramentas e conteúdo fora do histórico. Isso não valida o modelo generativo real.
 
 No seu Windows, teste primeiro pelo campo de texto: pesquisar Google, abrir navegador/Spotify/Downloads, volume e arquivos de teste. Depois valide com seu microfone. Browser real, janelas/volume do Windows, Lixeira, áudio físico, autenticação/reprodução na sua conta Spotify e instalação/inferência real do Ollama dependem do seu PC. Os requisitos do Spotify continuam os documentados anteriormente; remover OpenAI não elimina restrições ou eventual exigência de Premium do Spotify.
+
+## Validação da interface com esfera
+
+Na versão atual, **137 testes automatizados passaram**, assim como `pip check`. Os widgets Qt reais foram executados em Linux/offscreen; capturas foram inspecionadas e comparadas às referências em 1220×850, 800×600 e 580×420, com esfera inteira e controles acessíveis. Também foi exercitada a entrada normal `main.py`: janela, comando digitado, resposta e encerramento dos três workers. As consultas HTTPS reais de clima/dólar concluíram pela rotina da interface.
+
+Os testes novos cobrem amplitude do PCM, silêncio/mudo, volume, agendamento pela hora DAC, conversão 22.050→48.000 Hz, mono/estéreo, abort/fechamento, falha de dispositivo, síntese em memória/purga SAPI simuladas, separação entre níveis de mic/voz, minimizar/reduzir movimento, cartões chegando separadamente, cancelamento, arquivos clicáveis, Markdown, transições sem apagar histórico e OpenAI somente quando escolhida. Capturas da janela real: [repouso](assets/repouso.png), [escuta simulada](assets/escuta.png), [fala com PCM sintético](assets/fala.png) e [janela pequena](assets/compacto.png). Na captura de escuta/fala, **o sinal era PCM sintético e o dispositivo era simulado**; isso não prova reconhecimento ou reprodução física. O pacote PyAV foi fixado em 18.1.0 e seu wheel Windows/Python 3.11 x64 foi baixado com sucesso; 19.0.1 não oferecia esse alvo.
+
+Para validar no seu PC:
+
+1. Atualize os arquivos na pasta que já funciona e instale `requirements.txt`, preservando seus arquivos locais. Abra **iniciar_jarvis.bat**. Primeiro envie `bom dia Jarvis` por texto; confira horário, fontes e atualizações conforme cada cartão aparece.
+2. Ative resposta por voz. Durante a fala, a esfera deve acompanhar sílabas/intensidade e voltar ao repouso nos silêncios. Abaixe somente **Voz** até zero: voz e expansão devem diminuir, sem alterar o MP3. Suba novamente. Clique **Interromper fala** e verifique que nenhum trecho posterior toca e que texto/histórico permanecem.
+3. Com seu MP3, pause/retome durante a consulta e confirme continuação da posição. Pare música e confirme que a voz segue; pare todos os áudios e confira a escuta retomando quando habilitada, sem reconhecer a música ou o próprio Jarvis.
+4. Em **Detalhes**, escolha e teste seu microfone. Confira captura e transcrição separadas, RMS, língua portuguesa, ativação por Jarvis e prioridade de bom dia Jarvis. Fale uma frase, escute a resposta e dê outra após a retomada. Teste desconexão e cancelamento.
+5. Redimensione, recolha/abra histórico e detalhes, dispense cartões e faça nova consulta. Busque um arquivo de teste e clique no resultado. Minimize/restaure e teste **Reduzir movimento**. Feche durante fala/MP3: o som deve parar e os dispositivos ficar livres.
+6. Se usa Spotify/OpenAI, confira sua conta, dispositivo e configurações no PC. Esses serviços foram testados com respostas simuladas; não havia credenciais para chamadas reais.
+
+Ainda exigem Windows/dispositivos reais: SAPI5 → PCM da voz instalada, sincronismo percebido nos seus alto-falantes/fones, PortAudio e SDL simultâneos, reprodução do seu MP3, microfone/Whisper, DPI/fontes do Windows, integração nativa do PC, Spotify e inferência real Ollama. Nenhuma gravação física foi feita e nenhuma música comercial foi baixada.

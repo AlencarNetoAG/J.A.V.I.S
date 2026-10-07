@@ -1,4 +1,4 @@
-"""Comandos determinísticos e IA opcional somente em Ollama no loopback."""
+"""Comandos locais, Ollama no loopback e OpenAI com escolha explícita."""
 
 import json
 import os
@@ -40,6 +40,7 @@ class ConversaLocal:
     def __init__(self, controle):
         self.controle = controle
         self.historico = []
+        self.remota = None
         load_dotenv(RAIZ / ".env", override=False)
         # Cliente estritamente loopback: documentos não passam pelo proxy internet.
         # APIs HTTPS continuam preservando proxies e verificação TLS.
@@ -48,11 +49,25 @@ class ConversaLocal:
 
     def limpar(self):
         self.historico.clear()
+        if self.remota:
+            self.remota.limpar()
 
     def fechar(self):
         self.session.close()
+        if self.remota:
+            self.remota.fechar()
 
     def _ia(self, pergunta, cancelar, documento=None):
+        config = self.controle.config() if hasattr(self.controle, "config") else None
+        if documento is None and getattr(config, "provedor_ia", "local") == "openai":
+            from .cliente_openai import Conversa, ErroOpenAI
+
+            if self.remota is None:
+                self.remota = Conversa(self.controle)
+            try:
+                return self.remota.perguntar(pergunta, cancelar)
+            except ErroOpenAI as erro:
+                raise ErroFerramenta(str(erro)) from None
         modelo = os.environ.get("OLLAMA_MODEL", "").strip()
         if not modelo:
             raise ErroFerramenta(
