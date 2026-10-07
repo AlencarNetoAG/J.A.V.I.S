@@ -140,7 +140,8 @@ class ArquivosTests(unittest.TestCase):
         abrir.assert_not_called()
         self.dec.confirmar.side_effect = None
         r = self.a.ler(str(p), self.cancel)
-        self.assertTrue(r["envio_autorizado"])
+        self.assertFalse(r["envio_autorizado"])
+        self.assertTrue(r["leitura_local"])
         self.assertEqual(r["conteudo"], "segredo temporário")
 
     def test_ambiguidade_nao_abre_antes_da_escolha(self):

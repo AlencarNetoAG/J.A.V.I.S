@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+import re
 from pathlib import Path
 import shutil
 import tempfile
@@ -185,9 +186,13 @@ class Arquivos:
         else:
             caminho = Path(alvo).expanduser()
             if not caminho.is_absolute():
-                raise ErroFerramenta(
-                    "Informe um caminho completo dentro de uma pasta autorizada."
-                )
+                partes = re.split(r"[\\/]", alvo)
+                if len(partes) > 1 and normalizar(partes[0]) in aliases:
+                    caminho = self.validar(partes[0]).joinpath(*partes[1:])
+                else:
+                    raise ErroFerramenta(
+                        "Informe um caminho completo ou Documentos/nome.txt dentro de uma pasta autorizada."
+                    )
             caminho = caminho.resolve()
         if not any(caminho == r or r in caminho.parents for r in roots):
             raise ErroFerramenta(
@@ -307,7 +312,7 @@ class Arquivos:
             if not 0 <= indice < len(self.encontrados):
                 raise ErroFerramenta("Número de arquivo inválido.")
             return self.validar(str(self.encontrados[indice]))
-        elif Path(alvo).is_absolute() or normalizar(alvo) in (
+        elif Path(alvo).is_absolute() or normalizar(re.split(r"[\\/]", alvo)[0]) in (
             "downloads",
             "documentos",
             "area de trabalho",
@@ -353,7 +358,7 @@ class Arquivos:
             raise ErroFerramenta("Arquivo acima do limite de leitura de 10 MB.")
         antes = assinatura(p)
         self.decisoes.confirmar(
-            "Ler e enviar até 8.000 caracteres deste arquivo à OpenAI para esta solicitação",
+            "Ler localmente até 8.000 caracteres deste arquivo para resumo/explicação, sem envio à OpenAI",
             str(p),
             cancelar,
         )
@@ -364,6 +369,7 @@ class Arquivos:
             raise ErroFerramenta(
                 "O arquivo mudou após a confirmação. Solicite a leitura novamente."
             )
+        limitado = False
         if p.suffix.casefold() == ".pdf":
             from pypdf import PdfReader
 
@@ -377,6 +383,7 @@ class Arquivos:
                 if sum(map(len, trechos)) >= 8000:
                     break
             texto = "\n".join(trechos)
+            limitado = len(trechos) < len(leitor.pages)
         else:
             with p.open(encoding="utf-8-sig") as f:
                 texto = f.read(8001)
@@ -388,9 +395,10 @@ class Arquivos:
         return resultado(
             "Conteúdo autorizado para resumo desta solicitação.",
             conteudo=texto[:8000],
-            truncado=len(texto) > 8000,
+            truncado=limitado or len(texto) > 8000,
             arquivo=p.name,
-            envio_autorizado=True,
+            envio_autorizado=False,
+            leitura_local=True,
         )
 
     def _preparar_destino(self, destino, acao, cancelar):
@@ -454,6 +462,9 @@ class Arquivos:
         src = self.resolver(origem, cancelar)
         if not src.is_file():
             raise ErroFerramenta("Cópia/movimentação disponível apenas para arquivos.")
+        pasta_destino = self.validar(destino, existente=False)
+        if pasta_destino.is_dir():
+            destino = str(pasta_destino / src.name)
         dst, antes = self._preparar_destino(
             destino, ("Mover " if mover else "Copiar ") + str(src) + " para", cancelar
         )

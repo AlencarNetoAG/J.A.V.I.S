@@ -137,7 +137,7 @@ class InterfaceTests(unittest.TestCase):
 
     def test_escuta_retoma_apos_musica_fala_e_erro_de_api(self):
         from types import SimpleNamespace
-        from jarvis.cliente_openai import ErroOpenAI
+        from jarvis.ferramentas.base import ErroFerramenta
         from jarvis.cancelamento import verificar
         eventos=[]; etapa={"n":0}
         def capturar(cancel, **kwargs):
@@ -152,7 +152,7 @@ class InterfaceTests(unittest.TestCase):
             finalizar=lambda **kwargs:eventos.append("fade"),fechar=lambda:eventos.append("audio parado"),
             estado_atual=lambda:"parada",parar=lambda:None)
         voz=SimpleNamespace(falar_cancelavel=lambda *args,**kwargs:eventos.append("fala"),fechar=lambda:None)
-        with patch("jarvis.runtime.Ouvinte",return_value=SimpleNamespace(capturar_texto=capturar)),patch("jarvis.runtime.Musica",return_value=musica),patch("jarvis.runtime.Voz",return_value=voz),patch("jarvis.runtime.consultar_painel",side_effect=consulta),patch("jarvis.runtime.Conversa.perguntar",side_effect=ErroOpenAI("Serviço indisponível")):
+        with patch("jarvis.runtime.Ouvinte",return_value=SimpleNamespace(capturar_texto=capturar)),patch("jarvis.runtime.Musica",return_value=musica),patch("jarvis.runtime.Voz",return_value=voz),patch("jarvis.runtime.consultar_painel",side_effect=consulta),patch("jarvis.runtime.Conversa.perguntar",side_effect=ErroFerramenta("Serviço indisponível")):
             w=Janela(Configuracoes());w.show()
             try:
                 w.mic.click()

@@ -145,3 +145,101 @@ class InterfacePCTests(unittest.TestCase):
             finally:
                 w.close()
                 w.runtime.thread.join(2)
+
+
+class InterfaceLocalTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def esperar(self, predicado):
+        fim = time.monotonic() + 3
+        while time.monotonic() < fim:
+            self.app.processEvents()
+            if predicado():
+                return
+            time.sleep(0.005)
+        self.fail("Evento não ocorreu")
+
+    def test_pesquisa_digitada_sem_chave_sem_openai_e_resultado_no_painel(self):
+        from jarvis.ferramentas.base import HistoricoAcoes, resultado
+
+        with tempfile.TemporaryDirectory() as pasta, patch.dict(
+            os.environ, {"OPENAI_API_KEY": "", "OLLAMA_MODEL": ""}
+        ), patch("jarvis.cliente_local.load_dotenv"), patch(
+            "openai.OpenAI", side_effect=AssertionError("OpenAI proibida")
+        ), patch(
+            "requests.Session.post", side_effect=AssertionError("IA proibida")
+        ):
+            w = Janela(Configuracoes(sem_voz=True, sem_musica=True))
+            w.runtime.controle.historico = HistoricoAcoes(Path(pasta) / "log.jsonl")
+            w.show()
+            try:
+                with patch.object(
+                    w.runtime.controle.windows,
+                    "google",
+                    return_value=resultado(
+                        "Pesquisa encaminhada ao navegador", "solicitado"
+                    ),
+                ) as google:
+                    w.entrada.setText("Jarvis, pesquise notícias de Salgueiro")
+                    w.enviar.click()
+                    self.esperar(
+                        lambda: "Pesquisa encaminhada" in w.historico.toPlainText()
+                    )
+                    self.assertEqual(google.call_args.args[0], "notícias de Salgueiro")
+                    self.assertIn("solicitado", w.acao_pc.text())
+            finally:
+                w.close()
+                w.runtime.thread.join(2)
+                w.runtime.audio_thread.join(2)
+                w.runtime.monitor_thread.join(3)
+
+    def test_ativacao_e_pergunta_capturadas_sem_openai_retoma(self):
+        from types import SimpleNamespace
+        from jarvis.ferramentas.base import HistoricoAcoes, resultado
+        from jarvis.cancelamento import verificar
+
+        frases = iter(["Jarvis", "pesquise como fazer currículo"])
+        retomou = threading.Event()
+
+        def capturar(cancel, **kwargs):
+            try:
+                return next(frases)
+            except StopIteration:
+                retomou.set()
+                cancel.wait(0.05)
+                verificar(cancel)
+                return ""
+
+        with tempfile.TemporaryDirectory() as pasta, patch(
+            "jarvis.runtime.Ouvinte",
+            return_value=SimpleNamespace(capturar_texto=capturar),
+        ), patch("jarvis.cliente_local.load_dotenv"), patch.dict(
+            os.environ, {"OPENAI_API_KEY": "", "OLLAMA_MODEL": ""}
+        ), patch(
+            "requests.Session.post", side_effect=AssertionError("IA proibida")
+        ):
+            w = Janela(Configuracoes(sem_voz=True, sem_musica=True))
+            w.runtime.controle.historico = HistoricoAcoes(Path(pasta) / "log.jsonl")
+            w.show()
+            try:
+                with patch.object(
+                    w.runtime.controle.windows,
+                    "google",
+                    return_value=resultado(
+                        "Pesquisa de currículo enviada", "solicitado"
+                    ),
+                ) as google:
+                    w.mic.click()
+                    self.esperar(
+                        lambda: "Pesquisa de currículo" in w.historico.toPlainText()
+                    )
+                    self.esperar(retomou.is_set)
+                    self.assertEqual(google.call_args.args[0], "como fazer currículo")
+                    self.assertTrue(w.runtime.ativo)
+            finally:
+                w.close()
+                w.runtime.thread.join(2)
+                w.runtime.audio_thread.join(2)
+                w.runtime.monitor_thread.join(3)

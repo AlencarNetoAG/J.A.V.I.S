@@ -2,10 +2,10 @@
 
 import threading
 import os
-from .ferramentas.base import Decisoes
+from .ferramentas.base import Decisoes, ErroFerramenta
 from .ferramentas.controle import ControlePC
 from .cancelamento import Cancelado
-from .cliente_openai import Conversa, ErroOpenAI
+from .cliente_local import ConversaLocal as Conversa
 from .comandos import interpretar
 from .musica import Musica
 from .voz import Voz, ErroVoz
@@ -122,7 +122,7 @@ def iniciar(config):
                     )
                 if musica:
                     musica.finalizar(cancelar=cancel)
-            except (ErroOpenAI, ErroVoz) as erro:
+            except (ErroFerramenta, ErroVoz) as erro:
                 print(str(erro))
             finally:
                 if musica:

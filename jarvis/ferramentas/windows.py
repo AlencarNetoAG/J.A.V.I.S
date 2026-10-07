@@ -10,6 +10,26 @@ from ..cancelamento import verificar
 
 
 class Windows:
+    def google(self, consulta, cancelar):
+        self.exigir()
+        verificar(cancelar)
+        from urllib.parse import urlencode
+
+        url = (
+            "https://www.google.com/"
+            if consulta is None
+            else "https://www.google.com/search?" + urlencode({"q": consulta})
+        )
+        os.startfile(url)
+        return resultado(
+            (
+                "Solicitei ao navegador padrão a abertura do Google."
+                if consulta is None
+                else f"Solicitei ao navegador padrão a pesquisa: {consulta}. Confira os resultados na página."
+            ),
+            "solicitado",
+        )
+
     def __init__(self, antes_audio=None):
         self.antes_audio = antes_audio
 

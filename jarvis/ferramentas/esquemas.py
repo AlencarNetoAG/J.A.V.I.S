@@ -38,6 +38,18 @@ REGISTRO = {
     item["schema"]["name"]: item
     for item in [
         ferramenta(
+            "google_abrir",
+            "Abre o Google no navegador padrão, sem IA.",
+            "aplicativos",
+            {},
+        ),
+        ferramenta(
+            "google_pesquisar",
+            "Pesquisa um assunto no Google pelo navegador padrão.",
+            "aplicativos",
+            {"consulta": texto(2000)},
+        ),
+        ferramenta(
             "arquivo_buscar",
             "Localiza nomes de arquivos nas pastas autorizadas, sem ler conteúdo. pasta pode ser null.",
             "arquivos",
@@ -57,7 +69,7 @@ REGISTRO = {
         ),
         ferramenta(
             "arquivo_ler",
-            "Somente se o usuário pediu resumo/explicação: solicita autorização local específica antes de ler/enviar texto TXT/MD/CSV/JSON/LOG/PDF à OpenAI.",
+            "Somente se o usuário pediu resumo/explicação: solicita autorização específica para leitura LOCAL de TXT/MD/CSV/JSON/LOG/PDF, sem OpenAI.",
             "arquivos",
             {"alvo": texto()},
         ),

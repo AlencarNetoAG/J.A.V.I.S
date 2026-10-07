@@ -151,7 +151,9 @@ class ControlePC:
                     }
                 )
             a = self.arquivos
-            if nome == "arquivo_buscar":
+            if nome in ("google_abrir", "google_pesquisar"):
+                r = self.windows.google(args.get("consulta"), evento)
+            elif nome == "arquivo_buscar":
                 r = a.buscar(args["nome"], args["pasta"], evento)
             elif nome == "arquivo_listar":
                 r = a.listar(args["pasta"], evento)

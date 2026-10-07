@@ -2,9 +2,11 @@
 
 ![Painel desktop do Jarvis, renderizado em teste Qt offscreen](assets/painel.png)
 
-Aplicação desktop em Python/PySide6 com painel escuro, anéis animados, relógio de Salgueiro, cartões de clima/dólar e histórico de conversa. O reconhecimento Whisper é local. A API da OpenAI recebe texto somente após uma pergunta aceita.
+Aplicação desktop em Python/PySide6 com painel escuro, anéis animados, relógio de Salgueiro, cartões de clima/dólar e histórico de conversa. O reconhecimento Whisper é local. Todos os comandos de arquivos, aplicativos, Google, áudio e Spotify são interpretados localmente, **sem OpenAI, chave ou assinatura**. Conversa livre e explicação de documentos podem usar Ollama no próprio PC, opcionalmente.
 
-- **“Jarvis, explique uma função de segundo grau”**: pergunta na mesma frase.
+- **“Jarvis, pesquise como fazer um currículo”**: abre os resultados do Google no navegador padrão, sem IA.
+- **“Jarvis, abra o Spotify”**: comando local, sem OpenAI.
+- **“Jarvis, explique uma função de segundo grau”**: conversa livre pelo Ollama local, se instalado/configurado.
 - **“Jarvis”**: responde “Sim, senhor?” e espera a pergunta. O prazo e a duração máxima da captura são configuráveis.
 - **“bom dia Jarvis”**: tem prioridade depois de concluir a frase; música local, clima, horário de Recife e dólar. Funciona **sem chave da OpenAI**.
 - Perguntas por texto funcionam no painel e no terminal. “Limpar conversa” remove o contexto local desta sessão; não apaga dados do serviço externo.
@@ -41,33 +43,37 @@ O microfone começa **desativado**. Digite `bom dia Jarvis` e clique em **Enviar
 
 As animações são leves e podem ser desligadas com **Reduzir movimento**. O campo de texto e os botões ficam fixos no rodapé; o painel superior tem rolagem quando a janela é pequena. Durante uma consulta, Enviar é bloqueado para evitar operações simultâneas; Parar e Limpar permanecem disponíveis. A palavra de ativação é verificada como palavra inteira; `jarvisinho` não ativa. Aguarde três segundos depois de uma sequência por voz para evitar duplicatas.
 
-## Conversa com a OpenAI: configurar localmente
+## Usar sem OpenAI e sem assinatura
 
-A assinatura do **ChatGPT não inclui automaticamente créditos da API**. Você precisa de uma conta/chave de API e cobrança/saldo disponíveis na [plataforma OpenAI](https://platform.openai.com/). Confira os [preços da API](https://openai.com/api/pricing/), habilite limites adequados e não compartilhe a chave.
+Você **não precisa configurar OpenAI nem pagar assinatura** para os comandos do PC. Mesmo que seu `.env` antigo contenha `OPENAI_API_KEY`, a interface e o modo texto não usam essa chave. O módulo `cliente_openai.py` ficou como código legado fora do fluxo do aplicativo; os testes antigos desse módulo também não fazem chamadas reais.
 
-Na pasta do projeto, crie seu `.env` a partir do exemplo:
+Exemplos locais: “Jarvis, abra o Google”, “Jarvis, pesquise notícias de Salgueiro”, “Jarvis, encontre o arquivo relatório”, “Jarvis, abra este PDF”, “Jarvis, abra o Spotify” e “Jarvis, coloque o volume em cinquenta por cento”. Digite “ajuda” para ver exemplos. Horário, “qual a cotação do dólar?” e “como está o clima em Salgueiro?” também consultam suas fontes sem IA. O reconhecimento continua local e pede a palavra Jarvis para comandos falados; o campo de texto aceita com ou sem essa palavra. “Bom dia Jarvis” mantém prioridade.
 
-```powershell
-Copy-Item .env.example .env
-notepad .env
-```
+A pesquisa abre uma página no **navegador padrão**. O termo é enviado ao Google quando o navegador acessa a página; o Jarvis não lê automaticamente resultados, não os resume e não afirma ter verificado seu carregamento. Internet continua necessária para Google, câmbio, clima e serviços do Spotify. Os comandos de arquivos/aplicativos e o resumo básico funcionam sem um modelo de IA. Não existe envio contínuo de áudio nem de comandos à OpenAI.
 
-Faça essa cópia uma vez; se `.env` já existir, abra-o sem sobrescrever. Preencha **somente no seu PC**:
+A interpretação usa frases previstas, não uma IA: um pedido por vez, nos formatos da tabela abaixo. Não promete compreender qualquer formulação. Se um comando não for identificado, não executa shell nem encaminha à OpenAI. Converse no modelo local opcional ou reformule seguindo um exemplo. Excluir/sobrescrever e ler documentos continuam exigindo consentimento específico.
 
-```dotenv
-OPENAI_API_KEY=sua_chave_local
-OPENAI_MODEL=gpt-4.1-mini
-```
+### IA local opcional para conversa e explicação
 
-O exemplo acima é um marcador, não uma chave funcional. Salve como `.env` (não `.env.txt`) e reinicie o Jarvis. O programa também aceita variáveis já configuradas no processo, que têm prioridade sobre `.env`. A chave não aparece no painel ou nas preferências e os erros da API são resumidos sem detalhes sensíveis. **Nunca envie sua chave pelo chat, publique `.env` ou inclua-o em um ZIP.** `.env` e arquivos similares estão ignorados no Git.
+O resumo básico seleciona frases do documento usando palavras frequentes. É um **resumo extrativo**, não uma explicação gerada por IA. Para “explique este PDF” e perguntas livres, configure um modelo generativo local:
 
-Escolhemos `gpt-4.1-mini`, um modelo geral com suporte a ferramentas, com bom equilíbrio entre custo e respostas curtas; o identificador consta nos tipos oficiais do SDK. A disponibilidade para sua conta precisa ser confirmada por uma chamada real. Troque `OPENAI_MODEL` se necessário. Usamos o [SDK oficial](https://github.com/openai/openai-python) e a [Responses API](https://developers.openai.com/api/reference/resources/responses), sem reaproveitar automaticamente conversas/memória de sua conta ChatGPT.
+1. Instale [Ollama para Windows](https://ollama.com/download/windows), do site oficial. Não precisa de chave OpenAI. Instale no seu PC, não neste ambiente de desenvolvimento.
+2. Depois de instalar, abra um novo terminal e baixe um modelo **local**, por exemplo:
 
-O histórico enviado fica limitado aos **seis últimos pares** de pergunta/resposta; perguntas são limitadas a 4.000 caracteres e cada chamada a **400 tokens de saída**. Não há reenvio automático em erros (`max_retries=0`); timeout de SDK de 20 segundos. Uma resposta com ferramentas pode precisar de até três chamadas, com cobrança de entrada/saída em cada etapa. Dados da rotina bom dia usam as APIs públicas e não consomem OpenAI.
+   ```powershell
+   ollama pull qwen2.5:3b
+   ```
 
-As únicas ferramentas permitidas à OpenAI são clima atual de Salgueiro e cotação de compra USD/BRL, reutilizando validações/fontes deste projeto. Elas são consultadas quando o modelo solicita esses dados. Não há busca geral na web nem execução de comandos de terminal. Para outros assuntos que exijam atualização, o assistente recebe instrução para admitir falta de fonte atual. Resultados meteorológicos antigos são rejeitados; datas da cotação são fornecidas com o resultado. O modelo pode cometer erros: fontes e timestamps da saudação estão nos cartões.
+   O download inicial exige internet, espaço em disco e memória para o modelo. O desempenho depende do seu hardware; PCs mais modestos podem testar `qwen2.5:1.5b`. Configure o mesmo nome baixado no passo seguinte. Não escolha modelos de nuvem para este fluxo local.
+3. Abra o `.env` existente na pasta do Jarvis com `notepad .env`. Se ainda não existir, crie-o. Acrescente sem apagar a configuração Spotify:
 
-`store=False` desativa o armazenamento de respostas para recuperação via API; não significa ausência de retenção no provedor. Consulte as [políticas de dados da API](https://platform.openai.com/docs/guides/your-data). Perguntas/transcrições e histórico limitado são enviados à OpenAI; o áudio ambiente **não é enviado**, não é gravado em disco e não existe transcrição externa nesta versão. Sem chave, o painel, reconhecimento e a saudação continuam disponíveis; perguntas gerais mostram aviso de configuração.
+   ```dotenv
+   OLLAMA_MODEL=qwen2.5:3b
+   ```
+
+4. Mantenha Ollama aberto e reinicie o Jarvis. Teste “Jarvis, explique o que é Python”. Se Ollama não iniciar automaticamente, use `ollama serve` em outro terminal; se a porta já estiver ocupada pelo Ollama, não abra outro servidor.
+
+O cliente usa somente `http://127.0.0.1:11434/api/chat`, sem redirecionamentos ou fallback externo, com timeout de conexão de 3 s e leitura de 60 s. O modelo recebe texto e até seis pares de conversa, sem áudio. Conteúdo de documento só é lido depois da sua confirmação e não fica no contexto das perguntas posteriores. Saídas do modelo são texto: **não têm autoridade para executar ferramentas**. Não há necessidade de Ollama para pesquisar Google ou controlar o PC. O README oficial do Ollama foi consultado; o modelo não foi baixado/executado neste ambiente e sua qualidade/velocidade devem ser validadas no seu computador.
 
 ## Testar primeiro sem microfone
 
@@ -221,7 +227,9 @@ main.py                 entrada do programa
 jarvis/app.py           funções legadas da versão de terminal
 jarvis/interface.py     janela PySide6 e desenho dos anéis
 jarvis/runtime.py       worker serial e sinais para a interface
-jarvis/cliente_openai.py Responses API e ferramentas permitidas
+jarvis/cliente_local.py roteamento local, resumo e Ollama opcional
+jarvis/comandos_locais.py frases previstas e parâmetros
+jarvis/cliente_openai.py código legado, fora do fluxo do aplicativo
 jarvis/comandos.py      prioridade e ativação por palavra inteira
 jarvis/configuracoes.py preferências locais sem segredos
 jarvis/terminal.py      teste de conversa e saudação por texto
@@ -256,7 +264,7 @@ O download real dos pesos Whisper foi tentado, mas o proxy deste ambiente bloque
 No seu PC, coloque o MP3 e execute `--texto` para conferir a fala do Windows, a música simultânea, o volume baixo e a redução gradual. Depois execute o modo normal para conferir a transcrição real de “bom dia Jarvis”, o limiar de volume, a pausa durante toda a sequência e Ctrl+C durante fala/música. Não considere os testes simulados uma validação desses recursos físicos. Nenhum teste utilizou ou baixou a música do AC/DC. Os dados reais consultados aqui devem mudar conforme novas respostas das fontes.
 
 
-### Validação da versão desktop
+### Histórico de validação da versão desktop anterior
 
 A janela foi criada, renderizada e inspecionada em Linux com Qt **offscreen**, incluindo controles reais, redimensionamento, seleção de preferências, animação reduzida, limpeza, prevenção de tarefas duplicadas e cancelamento. Os 45 testes automatizados passaram. O transporte da Responses API foi testado com o SDK oficial e **HTTP simulado**: ferramentas, contexto limitado, chave ausente, autenticação, limite, conexão e cancelamento. O README atual do repositório oficial do SDK foi consultado e recomenda Responses; páginas completas da documentação OpenAI foram bloqueadas pela rede deste ambiente.
 
@@ -323,7 +331,7 @@ Os anéis do painel são desenhados pela aplicação e mudam a velocidade confor
 
 ## Controle do PC por voz e texto
 
-Esta versão acrescenta ferramentas reais de **arquivos, aplicativos, áudio e Spotify**. O modelo interpreta o pedido pela Responses API; uma camada local valida parâmetros, permissões e alvos antes de agir. Não há ferramenta de terminal, PowerShell, código arbitrário, instalação, compras, mensagens ou publicação. A saudação e os controles anteriores continuam disponíveis.
+Esta versão acrescenta ferramentas reais de **arquivos, aplicativos, áudio e Spotify**. Regras locais interpretam frases previstas; uma camada local valida parâmetros, permissões e alvos antes de agir, sem OpenAI. Não há ferramenta de terminal, PowerShell, código arbitrário, instalação, compras, mensagens ou publicação. A saudação e os controles anteriores continuam disponíveis.
 
 ### Atualizar a instalação existente
 
@@ -338,7 +346,7 @@ Abra `iniciar_jarvis.bat`. **Não recrie o ambiente que já funciona com Python 
 
 1. Abra **Permissões do PC**. As quatro categorias começam habilitadas; desmarque as que não deseja usar. O acesso inicial a arquivos fica nas pastas pessoais conhecidas do Windows, respeitando OneDrive/redirecionamento. Autorize outras pastas pelo seletor, se necessário.
 2. Nesse painel, use **Editar catálogo de aplicativos**. Spotify, navegador padrão e Bloco de Notas já estão cadastrados. Adicione outros programas escolhendo o `.exe` ou `.lnk` instalado, um nome e apelidos. O catálogo fica em `aplicativos.local.json`; caminhos não são escolhidos pelo modelo. Atalhos sem processo identificável podem abrir, mas a confirmação da janela/foco poderá ficar indisponível.
-3. Configure sua OpenAI no `.env`, conforme a seção anterior. Pedidos em linguagem natural precisam da API, inclusive abrir aplicativos por voz. Os botões de mídia/OAuth executam ferramentas locais sem precisar da chave OpenAI. Ative o microfone ou digite no painel.
+3. Ative o microfone ou digite no painel: **não configure OpenAI**. Para Spotify por nome, configure apenas Spotify; para conversa/explicação livre, Ollama é opcional. Os comandos do PC já funcionam sem modelo de IA.
 
 | Exemplo | Ação |
 | --- | --- |
@@ -347,7 +355,8 @@ Abra `iniciar_jarvis.bat`. **Não recrie o ambiente que já funciona com Python 
 | “Jarvis, encontre o arquivo relatório” | Busca nomes nas raízes autorizadas; apresenta números e caminhos. |
 | “Jarvis, abra a pasta Downloads” | Abre a pasta pessoal pelo aplicativo padrão. |
 | “Jarvis, abra este PDF” | Usa o último PDF selecionado ou solicita escolha entre os resultados. |
-| “Jarvis, resuma este PDF” | Solicita consentimento específico antes de ler/enviar seu texto à OpenAI. |
+| “Jarvis, resuma este PDF” | Solicita consentimento, lê localmente e seleciona trechos do texto, sem enviar à OpenAI. |
+| “Jarvis, explique este PDF” | Explica com Ollama local após consentimento; precisa de modelo instalado/configurado. |
 | “Jarvis, copie [caminho] para [caminho completo do destino]” | Copia um arquivo e verifica o conteúdo por SHA-256. |
 | “Jarvis, crie um arquivo notas.txt em [pasta] com o texto [conteúdo]” | Cria documento de texto dentro de uma raiz autorizada. |
 | “Jarvis, renomeie [arquivo] para [nome]” | Renomeia; confirma se o destino já existe. |
@@ -358,11 +367,11 @@ Abra `iniciar_jarvis.bat`. **Não recrie o ambiente que já funciona com Python 
 
 Use **um pedido de ação por vez** nesta versão. Para criar/copiar/mover, indique pasta existente e nome de destino; o Jarvis não cria árvores de diretórios. Arquivos executáveis/scripts não são abertos pela ferramenta de documentos nem criados pela ferramenta de texto. Aplicativos confiáveis são lançados sem argumentos de terminal. O Windows pode negar foco; nesse caso o Jarvis informa a limitação sem contornar a proteção.
 
-Busca: até cinco segundos, 20 mil entradas ou 30 resultados; não segue links/junções de pastas nem percorre `.venv`, `.git`, AppData e caches comuns. A listagem mostra até 100 itens. Busca/listagem/abertura não leem conteúdo para a OpenAI. Leitura autorizada suporta TXT, MD, CSV, JSON e LOG UTF-8, e PDF com texto: até 10 MB, 20 páginas e 8.000 caracteres enviados. Não há OCR nem leitura de PDFs protegidos por senha. O conteúdo pode gerar cobrança na API; é enviado só depois de autorização daquele arquivo, não fica no histórico local de ações e não pode acionar ferramentas posteriores no mesmo pedido.
+Busca: até cinco segundos, 20 mil entradas ou 30 resultados; não segue links/junções de pastas nem percorre `.venv`, `.git`, AppData e caches comuns. A listagem mostra até 100 itens. Busca/listagem/abertura não leem conteúdo para a OpenAI. Leitura autorizada suporta TXT, MD, CSV, JSON e LOG UTF-8, e PDF com texto: até 10 MB, 20 páginas e 8.000 caracteres processados localmente. Não há OCR nem leitura de PDFs protegidos por senha. O conteúdo não é enviado à OpenAI; leitura exige autorização daquele arquivo, não fica no histórico de ações e não pode acionar ferramentas. Com Ollama configurado, explicação é processada no serviço local do PC.
 
 ### Confirmações, suspensão e cancelamento
 
-Sobrescrita, exclusão e envio de conteúdo exibem **ação e alvo exatos** em uma janela de confirmação. Ela não bloqueia os controles de áudio. Confirme pelo botão ou diga **“confirmar”**; para recusar diga **“cancelar”**. Nas escolhas ambíguas, selecione a opção ou diga seu número. Há prazo de **30 segundos** e um identificador diferente por pedido; confirmação expirada ou referente a outro pedido não autoriza uma ação. A confirmação por voz usa o mesmo capturador local, sem transmitir áudio à OpenAI. Se o microfone estiver desabilitado, ocupado com áudio ou indisponível, use o botão. O modo `--texto` também aceita confirmação digitada com prazo.
+Sobrescrita, exclusão e leitura local exibem **ação e alvo exatos** em uma janela de confirmação. Ela não bloqueia os controles de áudio. Confirme pelo botão ou diga **“confirmar”**; para recusar diga **“cancelar”**. Nas escolhas ambíguas, selecione a opção ou diga seu número. Há prazo de **30 segundos** e um identificador diferente por pedido; confirmação expirada ou referente a outro pedido não autoriza uma ação. A confirmação por voz usa o mesmo capturador local, sem transmitir áudio à OpenAI. Se o microfone estiver desabilitado, ocupado com áudio ou indisponível, use o botão. O modo `--texto` também aceita confirmação digitada com prazo.
 
 **Cancelar ação** interrompe etapas futuras, inclusive uma autorização OAuth, sem desativar o microfone ou prometer desfazer alterações concluídas. Requisições em voo terminam conforme seus limites de tempo; não são reenviadas automaticamente. **Suspender controle do PC** cancela a ação atual e bloqueia ferramentas locais; conversa e “bom dia Jarvis” continuam disponíveis. Desativar uma categoria também cancela a ação em andamento. **Parar** mantém o comportamento anterior, inclusive desativar o microfone. Os controles diretos anteriores de MP3 e voz continuam independentes do painel de permissões de ferramentas.
 
@@ -380,7 +389,7 @@ A busca e reprodução por nome usam **Spotify Web API**, com OAuth Authorizatio
    ```
 
    O callback escuta somente no próprio PC. Feche outro Jarvis usando a porta 8787. Não troque por `localhost` ou por um endereço público.
-3. Abra o `.env` **existente**, preservando sua chave OpenAI, e acrescente o Client ID mostrado no Dashboard (é identificador público):
+3. Abra o `.env` **existente**, preservando suas outras configurações, e acrescente o Client ID mostrado no Dashboard (é identificador público):
 
    ```dotenv
    SPOTIFY_CLIENT_ID=seu_client_id
@@ -410,7 +419,7 @@ Documentação oficial: [PKCE](https://developer.spotify.com/documentation/web-a
 5. Conecte sua conta Spotify, faça uma busca com artista, escolha resultados e dispositivos. Confira título e estado real após play/pause/next/previous e o volume no Spotify. Teste o fallback local sem API; confirme que busca por nome explica a limitação.
 6. Com Spotify e MP3 ativos, peça pausa pelo texto e confira a escolha de fonte. Teste comandos por voz com fones. Sem fones, a escuta deve ficar pausada durante reprodução externa; pause pelo painel e confirme a retomada. Teste erros e feche o aplicativo durante uma operação.
 
-**105 testes passaram** no Linux, além de `pip check`. Arquivos temporários foram realmente criados/copiados/movidos/renomeados, com verificação de conteúdo, limites, ambiguidades e consentimento antes de leitura. A Lixeira do Windows foi **simulada**, sem exclusão de dados pessoais. Os testes Qt usam widgets reais offscreen e verificam confirmação não modal, cancelamento, suspensão preservando saudação e encerramento dos workers. SDK Responses/Spotify usam HTTP simulado: parâmetros, escopos, renovação, dispositivo, 204 sem sucesso automático, falhas e bloqueio de ferramentas após conteúdo de arquivo. A leitura de texto PDF também foi exercitada com pypdf real em um documento gerado para o teste. O callback OAuth loopback foi exercitado em servidor HTTP local real, com `state` inválido rejeitado e PKCE S256 conferido, **sem autenticação real no Spotify**. Os pacotes Windows/Python 3.11 x64 foram baixados e suas interfaces inspecionadas; não foram executados como APIs nativas aqui.
+Na versão anterior, **105 testes passaram** no Linux, além de `pip check`. Arquivos temporários foram realmente criados/copiados/movidos/renomeados, com verificação de conteúdo, limites, ambiguidades e consentimento antes de leitura. A Lixeira do Windows foi **simulada**, sem exclusão de dados pessoais. Os testes Qt usam widgets reais offscreen e verificam confirmação não modal, cancelamento, suspensão preservando saudação e encerramento dos workers. SDK Responses/Spotify usam HTTP simulado: parâmetros, escopos, renovação, dispositivo, 204 sem sucesso automático, falhas e bloqueio de ferramentas após conteúdo de arquivo. A leitura de texto PDF também foi exercitada com pypdf real em um documento gerado para o teste. O callback OAuth loopback foi exercitado em servidor HTTP local real, com `state` inválido rejeitado e PKCE S256 conferido, **sem autenticação real no Spotify**. Os pacotes Windows/Python 3.11 x64 foram baixados e suas interfaces inspecionadas; não foram executados como APIs nativas aqui.
 
 Ainda dependem do seu PC: Known Folders/OneDrive, abertura/foco de janelas, Lixeira real, Core Audio, sessões de mídia Windows, cofre de credenciais, consentimento real Spotify, restrições da conta/dispositivo, microfone, reconhecimento e som físico. Não havia chave OpenAI nem conta Spotify conectada neste ambiente.
 
@@ -419,3 +428,27 @@ Os módulos novos estão em `jarvis/ferramentas/`: `esquemas.py`, `controle.py`,
 ```powershell
 .\.venv\Scripts\python.exe main.py --texto --sem-voz --sem-musica
 ```
+
+## Frases locais para arquivos e mídia
+
+| Pedido | Formato sem OpenAI |
+| --- | --- |
+| Buscar arquivo | `Jarvis, encontre o arquivo relatório na pasta Documentos` |
+| Listar pasta | `Jarvis, liste Downloads` |
+| Abrir documento | `Jarvis, abra este PDF` ou `Jarvis, abra o arquivo notas.txt` |
+| Criar documento | `Jarvis, crie arquivo notas.txt em Documentos com texto Olá, mundo!` |
+| Copiar | `Jarvis, copie "C:\Users\Fulano\Documents\notas.txt" para Downloads` |
+| Mover | `Jarvis, mova "C:\Users\Fulano\Downloads\notas.txt" para Documentos` |
+| Renomear | `Jarvis, renomeie o arquivo notas.txt para novo_nome.txt` |
+| Excluir | `Jarvis, exclua o arquivo notas.txt` (sempre confirma Lixeira) |
+| Focar aplicativo | `Jarvis, foque o navegador` |
+| Spotify | `Jarvis, toque Highway to Hell do AC/DC no Spotify` |
+| Controles | `Jarvis, pause a música`, `Jarvis, retome a música`, `Jarvis, próxima música`, `Jarvis, música anterior` |
+| Faixa atual | `Jarvis, qual música está tocando no Spotify` |
+| Volume | `Jarvis, ajuste o volume do Spotify para 30 por cento` ou `Jarvis, coloque o volume do MP3 em dez por cento` |
+
+Substitua os caminhos pelo seu usuário real. Para caminhos/nomes com espaços ou palavras “para”, prefira digitar usando aspas. Sem pasta, criação usa Documentos; a pasta precisa existir. Destino de cópia/movimentação pode ser uma pasta autorizada (preserva nome) ou um caminho completo com nome novo. `Documentos/notas.txt` e `Downloads/notas.txt` também são aceitos. Criação é literal: o texto depois de “com texto” vira conteúdo, não é executado nem escrito por uma IA.
+
+**Validação da versão local: 123 testes passaram**, e `pip check` passou. Há testes que bloqueiam o cliente OpenAI e chamadas a modelos enquanto exercitam todos os exemplos do anexo, arquivos temporários realmente alterados, URL Google codificada com host HTTPS fixo, limites de volume, permissões/suspensão/cancelamento e consentimento local antes da leitura. A janela Qt foi testada com comando digitado e ativação/pergunta capturadas por microfone simulado, mostrando ação/resultado e retomando a escuta. O contrato HTTP do Ollama foi testado com respostas simuladas, incluindo indisponibilidade sem fallback externo, ausência de ferramentas e conteúdo fora do histórico. Isso não valida o modelo generativo real.
+
+No seu Windows, teste primeiro pelo campo de texto: pesquisar Google, abrir navegador/Spotify/Downloads, volume e arquivos de teste. Depois valide com seu microfone. Browser real, janelas/volume do Windows, Lixeira, áudio físico, autenticação/reprodução na sua conta Spotify e instalação/inferência real do Ollama dependem do seu PC. Os requisitos do Spotify continuam os documentados anteriormente; remover OpenAI não elimina restrições ou eventual exigência de Premium do Spotify.

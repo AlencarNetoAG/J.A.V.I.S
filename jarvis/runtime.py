@@ -11,7 +11,7 @@ import time
 from PySide6.QtCore import QObject, Signal
 
 from .cancelamento import Cancelado, Eventos, verificar
-from .cliente_openai import Conversa, ErroOpenAI
+from .cliente_local import ConversaLocal as Conversa
 from .clima import consultar_clima
 from .comandos import interpretar
 from .cotacao import consultar_cotacao, numero_por_extenso
@@ -545,7 +545,7 @@ class Runtime(QObject):
                         self.emitir(self.estado, "Preparando escuta" if self.ativo else "Desativado")
                 except Cancelado:
                     self.emitir(self.estado, "Desativado" if not self.ativo else "Preparando escuta")
-                except (ErroOpenAI, ErroMicrofone, ErroReconhecedor, ErroVoz, ErroFerramenta) as erro:
+                except (ErroMicrofone, ErroReconhecedor, ErroVoz, ErroFerramenta) as erro:
                     self.emitir(self.mensagem, "Aviso", str(erro))
                     if origem == "teste_microfone" and ouvinte is None:
                         self.emitir(self.diagnostico, {"captura": "Não · captura não iniciada", "reconhecimento": str(erro)})
